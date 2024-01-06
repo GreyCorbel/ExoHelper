@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
    inputs:
       publish:
+        type: boolean
         description: 'Whether to publish from manual run of workflow'     
         required: false
         default: false
@@ -65,7 +66,7 @@ jobs:
 
     - name: Publish
       #Publish to PS Gallery
-      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ github.event.inputs.publish }}
+      if: ${{ github.event_name != 'workflow_dispatch' }} || ${{ github.event.inputs.publish == true }}
       shell: pwsh
       env:
         SECRET: ${{ secrets.PSGallery_APIKey }}

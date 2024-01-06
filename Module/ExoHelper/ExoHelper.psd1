@@ -33,7 +33,7 @@ Copyright = '(c) Jiri Formacek. All rights reserved.'
 Description = 'Simple wrapper module that directly calls EXO REST API without the need for full heavy-weight ExchangeOnlineManagement module'
 
 # Minimum version of the PowerShell engine required by this module
-# PowerShellVersion = ''
+PowerShellVersion = '5.1'
 
 # Name of the PowerShell host required by this module
 # PowerShellHostName = ''
