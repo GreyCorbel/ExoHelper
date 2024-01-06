@@ -69,7 +69,7 @@ jobs:
       if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish == true }}
       shell: pwsh
       env:
-        SECRET: ${{ secrets.PSGallery_APIKey }}
+        SECRET: ${{ secrets.GC_PSGALLERY_APIKEY }}
       run: |
         write-host "Publishing from: $env:GITHUB_WORKSPACE\Module\ExoHelper"
         try
