@@ -12,7 +12,7 @@
 RootModule = 'ExoHelper.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.1'
+ModuleVersion = '1.0.2'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Desktop', 'Core')
@@ -69,7 +69,7 @@ RequiredModules = @('AadAuthenticationFactory')
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @('Initialize-ExoAuth', 'Invoke-ExoCommand')
+FunctionsToExport = @('Initialize-ExoAuth', 'Invoke-ExoCommand', 'Get-ExoToken')
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
@@ -95,13 +95,13 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        # Tags = @()
+        Tags = @('ExchangeOnlineManagement','PSEdition_Core','PSEdition_Desktop')
 
         # A URL to the license for this module.
-        # LicenseUri = ''
+        LicenseUri = 'https://raw.githubusercontent.com/GreyCorbel/ExoHelper/main/LICENSE'
 
         # A URL to the main website for this project.
-        # ProjectUri = ''
+        ProjectUri = 'https://github.com/greycorbel/ExoHelper'
 
         # A URL to an icon representing this module.
         # IconUri = ''

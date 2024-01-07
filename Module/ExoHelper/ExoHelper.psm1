@@ -49,8 +49,7 @@ param
 
         if([string]::IsNullOrEmpty($AnchorMailbox))
         {
-            $token = Get-ExoToken
-            $claims = $token | Test-AadToken | Select-Object -ExpandProperty payload
+            $claims = Get-ExoToken | Test-AadToken -PayloadOnly
             if($null -ne $claims.upn)
             {
                 #using caller's mailbox
@@ -58,7 +57,7 @@ param
             }
             else
             {
-                #likely app-only context
+                #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
                 $anchorMailbox = "SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@$tenantId"
             }
         }
@@ -68,7 +67,24 @@ param
 
 function Get-ExoToken
 {
-    param
+<#
+.SYNOPSIS
+    Retrieves access token for authentication with EXO REST API
+
+.DESCRIPTION
+    Retrieves access token for authentication with EXO REST API via authentication factory
+
+.OUTPUTS
+    Hash table with authorization header containing access token, ready to be passed as headers to web request
+
+.EXAMPLE
+Get-ExoToken
+
+Description
+-----------
+Retieve authorizatin header for calling EXO REST API
+#>
+param
     (
     )
 
@@ -191,6 +207,5 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                 Start-Sleep -Seconds $retries
             }
         }while($true)
-       
     }
 }
