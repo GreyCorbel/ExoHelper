@@ -147,6 +147,9 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
             $props = $PropertiesToLoad -join ','
             $uri = "$uri`?`$select=$props"
         }
+        #do not show progress from Invoke-WebRequest
+        $pref = $progressPreference
+        $progressPreference = 'SilentlyContinue'
     }
 
     process
@@ -207,5 +210,10 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                 Start-Sleep -Seconds $retries
             }
         }while($true)
+    }
+    end
+    {
+        #restore progress preference
+        $progressPreference = $pref
     }
 }
