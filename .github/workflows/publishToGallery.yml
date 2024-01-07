@@ -30,9 +30,9 @@ jobs:
       shell: pwsh
       run: |
         Copy-Item -Path "$env:GITHUB_WORKSPACE\LICENSE" -Destination "$env:GITHUB_WORKSPACE\Module\ExoHelper\LICENSE.txt" -Force
-        ${{github.event_name}}
-        ${{github.event.inputs.publish}}
-        ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish }}
+        Write-Host ${{github.event_name}}
+        Write-Host ${{github.event.inputs.publish}}
+        Write-Host ${{ (github.event_name != 'workflow_dispatch') || github.event.inputs.publish }}
 
     - name: Install prerequisites
       shell: pwsh
@@ -69,7 +69,7 @@ jobs:
 
     - name: Publish
       #Publish to PS Gallery
-      if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish == true }}
+      if: ${{ (github.event_name != 'workflow_dispatch') || github.event.inputs.publish }}
       shell: pwsh
       env:
         SECRET: ${{ secrets.GC_PSGALLERY_APIKEY }}
