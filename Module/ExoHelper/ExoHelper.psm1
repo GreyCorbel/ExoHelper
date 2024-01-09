@@ -130,14 +130,18 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
             #List of properties to return if not interested in full object
         $PropertiesToLoad,
 
+        [Parameter()]
+        [int]
+            #Max retries when throttling occurs
+        $MaxRetries = 10,
+
         [switch]
             #If we want to write any warnings returned by EXO REST API
-        $WriteWarnings
+        $ShowWarnings
     )
 
     begin
     {
-        $maxRetryCount = 10
         $headers = Get-ExoToken
         $body = @{}
         $batchSize = 1000
@@ -182,7 +186,7 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
 
                 $responseData = $response.Content | ConvertFrom-Json
                 
-                if($WriteWarnings)
+                if($ShowWarnings)
                 {
                     foreach($warning in $responseData.'@adminapi.warnings')
                     {
@@ -192,16 +196,55 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                 $responseData.value
                 break
             }
-            catch {
+            catch  {
                 $ex = $_.exception
-                if($ex.StatusCode -ne 429)
+                if($PSVersionTable.psEdition -eq 'Desktop')
                 {
-                    #not retryable
-                    throw
+                    if($ex -is [System.Net.WebException])
+                    {
+                        if($ex.response.statusCode -ne 429)
+                        {
+                            throw
+                        }
+                    }
+                    else
+                    {
+                        #different exception
+                        throw
+                    }
                 }
+                else
+                {
+                    #Core
+                    if($ex -is [Microsoft.PowerShell.Commands.HttpResponseException])
+                    {
+                        if($ex.statusCode -ne 429)
+                        {
+                            throw
+                        }
+                    }
+                    else
+                    {
+                        #different exception type
+                        throw
+                    }
+                }
+                $headers = $ex.Response.Headers
                 $retries++
                 Write-Verbose "Retry #$retries"
-                if($retries -gt $maxRetryCount)
+                if($null -ne $headers['Rate-Limit-Remaining'] -and $null -ne $headers['Rate-Limit-Reset'])
+                {
+                    if($PSVersionTable.psEdition -eq 'Desktop')
+                    {
+                        Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'])`tRate limit reset: $($headers['Rate-Limit-Reset'])"
+                    }
+                    else
+                    {
+                        #Core
+                        Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'][0])`tRate limit reset: $($headers['Rate-Limit-Reset'][0])"
+                    }
+                }
+                if($retries -gt $MaxRetries)
                 {
                     #max retries exhausted
                     throw
