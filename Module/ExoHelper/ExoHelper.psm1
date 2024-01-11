@@ -137,7 +137,10 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
 
         [switch]
             #If we want to write any warnings returned by EXO REST API
-        $ShowWarnings
+        $ShowWarnings,
+        [switch]
+        #If we want to include rate limits reported by REST API to verbose output
+        $ShowRateLimits
     )
 
     begin
@@ -180,7 +183,7 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         do
         {
             try {
-                $response = Invoke-WebRequest -Uri $uri -Method Post -Body ($body | ConvertTo-Json -Depth 9) -Headers $headers -ContentType 'application/json' -ErrorAction Stop
+                $response = Invoke-WebRequest -Uri $uri -Method Post -Body ($body | ConvertTo-Json -Depth 9) -Headers $headers -ContentType 'application/json' -ErrorAction Stop -Verbose:$false
                 #we may process the headers in the future to see rate limit remaining, etc.
                 $headers = $response.Headers
 
@@ -231,18 +234,13 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                 }
                 $headers = $ex.Response.Headers
                 $retries++
-                Write-Verbose "Retry #$retries"
-                if($null -ne $headers['Rate-Limit-Remaining'] -and $null -ne $headers['Rate-Limit-Reset'])
+                if($ShowWarnings)
                 {
-                    if($PSVersionTable.psEdition -eq 'Desktop')
-                    {
-                        Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'])`tRate limit reset: $($headers['Rate-Limit-Reset'])"
-                    }
-                    else
-                    {
-                        #Core
-                        Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'][0])`tRate limit reset: $($headers['Rate-Limit-Reset'][0])"
-                    }
+                    Write-Warning "Retry #$retries"
+                }
+                else
+                {
+                    Write-Verbose "Retry #$retries"
                 }
                 if($retries -gt $MaxRetries)
                 {
@@ -251,6 +249,24 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                 }
                 #wait some time
                 Start-Sleep -Seconds $retries
+            }
+            finally
+            {
+                if($ShowRateLimits)
+                {
+                    if($null -ne $headers -and $null -ne $headers['Rate-Limit-Remaining'] -and $null -ne $headers['Rate-Limit-Reset'])
+                    {
+                        if($PSVersionTable.psEdition -eq 'Desktop')
+                        {
+                            Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'])`tRate limit reset: $($headers['Rate-Limit-Reset'])"
+                        }
+                        else
+                        {
+                            #Core
+                            Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'][0])`tRate limit reset: $($headers['Rate-Limit-Reset'][0])"
+                        }
+                    }
+                }
             }
         }while($true)
     }
