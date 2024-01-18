@@ -22,7 +22,7 @@ param
     (
         [Parameter(Mandatory)]
         #AAD authentication factory created via New-AadAuthenticationFactory
-        #for user context, user factory created with clientId = fb78d390-0c51-40cd-8e17-fdbfab77341b (clientId of ExchangeOnlineManagement module) or your app 
+        #for user context, user factory created with clientId = fb78d390-0c51-40cd-8e17-fdbfab77341b (clientId of ExchangeOnlineManagement module) or your app with appropriate scopes assigned
         $AuthenticationFactory,
         
         [Parameter(Mandatory)]
@@ -90,7 +90,7 @@ param
 
     process
     {
-        Get-AadToken -Factory $script:ConnectionContext.AuthenticationFactory -Scopes 'https://outlook.office365.com/.default' -AsHashTable
+        Get-AadToken -Factory $script:ConnectionContext.AuthenticationFactory -Scopes 'https://outlook.office365.com/.default'
     }
 }
 
@@ -135,6 +135,12 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
             #Max retries when throttling occurs
         $MaxRetries = 10,
 
+        [Parameter()]
+        [int]
+            #Max results to return
+            #1000 is a minimum, and min increment is 1000
+        $ResultSize = [int]::MaxValue,
+
         [switch]
             #If we want to write any warnings returned by EXO REST API
         $ShowWarnings,
@@ -145,7 +151,6 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
 
     begin
     {
-        $headers = Get-ExoToken
         $body = @{}
         $batchSize = 1000
         $uri = $script:ConnectionContext.ConnectionUri
@@ -161,8 +166,8 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
 
     process
     {
+        $headers = @{}
         $headers['X-CmdletName'] = $Name
-        $headers['client-request-id'] = [Guid]::NewGuid().ToString()
         $headers['Prefer'] = "odata.maxpagesize=$batchSize"
         $headers['connection-id'] = $script:ConnectionContext.connectionId
         $headers['X-AnchorMailbox'] =$script:ConnectionContext.anchorMailbox
@@ -180,94 +185,107 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
             Parameters = $Parameters
         }
         $retries = 0
+        $resultsRetrieved = 0
+        $pageUri = $uri
         do
         {
-            try {
-                $response = Invoke-WebRequest -Uri $uri -Method Post -Body ($body | ConvertTo-Json -Depth 9) -Headers $headers -ContentType 'application/json' -ErrorAction Stop -Verbose:$false
-                #we may process the headers in the future to see rate limit remaining, etc.
-                $headers = $response.Headers
-
-                $responseData = $response.Content | ConvertFrom-Json
-                
-                if($ShowWarnings)
-                {
-                    foreach($warning in $responseData.'@adminapi.warnings')
-                    {
-                        Write-Warning $warning
-                    }
-                }
-                $responseData.value
-                break
-            }
-            catch  {
-                $ex = $_.exception
-                if($PSVersionTable.psEdition -eq 'Desktop')
-                {
-                    if($ex -is [System.Net.WebException])
-                    {
-                        if($ex.response.statusCode -ne 429)
-                        {
-                            throw
-                        }
-                    }
-                    else
-                    {
-                        #different exception
-                        throw
-                    }
-                }
-                else
-                {
-                    #Core
-                    if($ex -is [Microsoft.PowerShell.Commands.HttpResponseException])
-                    {
-                        if($ex.statusCode -ne 429)
-                        {
-                            throw
-                        }
-                    }
-                    else
-                    {
-                        #different exception type
-                        throw
-                    }
-                }
-                $headers = $ex.Response.Headers
-                $retries++
-                if($ShowWarnings)
-                {
-                    Write-Warning "Retry #$retries"
-                }
-                else
-                {
-                    Write-Verbose "Retry #$retries"
-                }
-                if($retries -gt $MaxRetries)
-                {
-                    #max retries exhausted
-                    throw
-                }
-                #wait some time
-                Start-Sleep -Seconds $retries
-            }
-            finally
+            do
             {
-                if($ShowRateLimits)
-                {
-                    if($null -ne $headers -and $null -ne $headers['Rate-Limit-Remaining'] -and $null -ne $headers['Rate-Limit-Reset'])
+                try {
+                    #new request id for each request
+                    $headers['client-request-id'] = [Guid]::NewGuid().ToString()
+                    #provide up to date token for each request of commands returning paged results that may take long to complete
+                    $headers['Authorization'] = (Get-ExoToken).CreateAuthorizationHeader()
+                    Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
+
+                    $response = Invoke-WebRequest -Uri $pageUri -Method Post -Body ($body | ConvertTo-Json -Depth 9) -Headers $headers -ContentType 'application/json' -ErrorAction Stop -Verbose:$false
+                    #we may process the headers in the future to see rate limit remaining, etc.
+                    $responseHeaders = $response.Headers
+    
+                    $responseData = $response.Content | ConvertFrom-Json
+                    
+                    if($ShowWarnings)
                     {
-                        if($PSVersionTable.psEdition -eq 'Desktop')
+                        foreach($warning in $responseData.'@adminapi.warnings')
                         {
-                            Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'])`tRate limit reset: $($headers['Rate-Limit-Reset'])"
+                            Write-Warning $warning
+                        }
+                    }
+                    $resultsRetrieved+=$responseData.value.Count
+                    $responseData.value
+                    $pageUri = $responseData.'@odata.nextLink'
+                }
+                catch  {
+                    $ex = $_.exception
+                    if($PSVersionTable.psEdition -eq 'Desktop')
+                    {
+                        if($ex -is [System.Net.WebException])
+                        {
+                            if($ex.response.statusCode -ne 429)
+                            {
+                                throw
+                            }
                         }
                         else
                         {
-                            #Core
-                            Write-Verbose "Rate limit remaining: $($headers['Rate-Limit-Remaining'][0])`tRate limit reset: $($headers['Rate-Limit-Reset'][0])"
+                            #different exception
+                            throw
+                        }
+                    }
+                    else
+                    {
+                        #Core
+                        if($ex -is [Microsoft.PowerShell.Commands.HttpResponseException])
+                        {
+                            if($ex.statusCode -ne 429)
+                            {
+                                throw
+                            }
+                        }
+                        else
+                        {
+                            #different exception type
+                            throw
+                        }
+                    }
+                    $responseHeaders = $ex.Response.Headers
+                    $retries++
+                    if($ShowWarnings)
+                    {
+                        Write-Warning "Retry #$retries"
+                    }
+                    else
+                    {
+                        Write-Verbose "Retry #$retries"
+                    }
+                    if($retries -gt $MaxRetries)
+                    {
+                        #max retries exhausted
+                        throw
+                    }
+                    #wait some time
+                    Start-Sleep -Seconds $retries
+                }
+                finally
+                {
+                    if($ShowRateLimits)
+                    {
+                        if($null -ne $responseHeaders -and $null -ne $responseHeaders['Rate-Limit-Remaining'] -and $null -ne $responseHeaders['Rate-Limit-Reset'])
+                        {
+                            if($PSVersionTable.psEdition -eq 'Desktop')
+                            {
+                                Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'])"
+                            }
+                            else
+                            {
+                                #Core
+                                Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'][0])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'][0])"
+                            }
                         }
                     }
                 }
-            }
+            }while($null -ne $pageUri -and $resultsRetrieved -le $ResultSize)
+            break
         }while($true)
     }
     end
