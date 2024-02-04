@@ -197,8 +197,25 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                     #provide up to date token for each request of commands returning paged results that may take long to complete
                     $headers['Authorization'] = (Get-ExoToken).CreateAuthorizationHeader()
                     Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
-
-                    $response = Invoke-WebRequest -Uri $pageUri -Method Post -Body ($body | ConvertTo-Json -Depth 9) -Headers $headers -ContentType 'application/json' -ErrorAction Stop -Verbose:$false
+                    $splat = @{
+                        Uri = $pageUri
+                        Method = 'Post'
+                        Body = ($body | ConvertTo-Json -Depth 9)
+                        Headers = $headers
+                        ContentType = 'application/json'
+                        ErrorAction = 'Stop'
+                        Verbose = $false
+                    }
+                    #add edition-specific parameters
+                    if($PSEdition -eq 'Desktop')
+                    {
+                        $splat['UseBasicParsing'] = $true
+                    }
+                    else
+                    {
+                        $splat['ProgressAction'] = 'SilentlyContinue'
+                    }
+                    $response = Invoke-WebRequest @splat
                     #we may process the headers in the future to see rate limit remaining, etc.
                     $responseHeaders = $response.Headers
     
