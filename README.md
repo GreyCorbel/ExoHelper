@@ -17,14 +17,15 @@ $clientSecret = 'yyy'   #client secret for app registration
 $tenantId = 'mydomain.onmicrosoft.com'
 
 $factory = New-AadAuthenticationFactory -TenantId $tenantId -ClientId $clientId -ClientSecret $clientSecret
-#initialize the ExoHelper module
+#initialize the Exo connection
 $Connection = New-ExoConnection -Authenticationfactory $factory -TenantId $tenantId
 
 #call EXO command
 $params = @{
     Identity = "myuser@mydomain.com"
 }
-#Specification of connection is optional here - module automatically uses last connection created when explicit connection not provided
+#Specification of connection is optional here
+#Module automatically uses last connection created when explicit connection not provided
 Invoke-ExoCommand -Name 'Get-Mailbox' -Parameters $params -Connection $Connection
 
 ```
