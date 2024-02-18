@@ -1,4 +1,4 @@
-function Initialize-ExoAuth
+function New-ExoConnection
 {
 <#
 .SYNOPSIS
@@ -11,7 +11,7 @@ function Initialize-ExoAuth
     None
 
 .EXAMPLE
-Initialize-ExoAuth -authenticationfactory $factory -TenantId mydomain.onmicrosoft.com
+New-ExoConnection -authenticationfactory $factory -TenantId mydomain.onmicrosoft.com
 
 Description
 -----------
@@ -39,7 +39,7 @@ param
 
     process
     {
-        $script:ConnectionContext = [PSCustomObject]@{
+        $Connection = [PSCustomObject]@{
             AuthenticationFactory = $AuthenticationFactory
             TenantId = $tenantId
             AnchorMailbox = "UPN:$anchorMailbox"
@@ -49,7 +49,7 @@ param
 
         if([string]::IsNullOrEmpty($AnchorMailbox))
         {
-            $claims = Get-ExoToken | Test-AadToken -PayloadOnly
+            $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
             if($null -ne $claims.upn)
             {
                 #using caller's mailbox
@@ -61,7 +61,9 @@ param
                 $anchorMailbox = "SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@$tenantId"
             }
         }
-        $script:ConnectionContext.AnchorMailbox = "UPN:$anchorMailbox"
+        $Connection.AnchorMailbox = "UPN:$anchorMailbox"
+        $script:ConnectionContext = $Connection
+        $script:ConnectionContext
     }
 }
 
@@ -86,11 +88,13 @@ Retieve authorizatin header for calling EXO REST API
 #>
 param
     (
+        [Parameter()]
+        $Connection = $script:ConnectionContext
     )
 
     process
     {
-        Get-AadToken -Factory $script:ConnectionContext.AuthenticationFactory -Scopes 'https://outlook.office365.com/.default'
+        Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes 'https://outlook.office365.com/.default'
     }
 }
 
@@ -144,16 +148,21 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         [switch]
             #If we want to write any warnings returned by EXO REST API
         $ShowWarnings,
+
         [switch]
         #If we want to include rate limits reported by REST API to verbose output
-        $ShowRateLimits
+        $ShowRateLimits,
+
+        [Parameter()]
+        $Connection = $script:ConnectionContext
+
     )
 
     begin
     {
         $body = @{}
         $batchSize = 1000
-        $uri = $script:ConnectionContext.ConnectionUri
+        $uri = $Connection.ConnectionUri
         if($PropertiesToLoad.Count -gt 0)
         {
             $props = $PropertiesToLoad -join ','
@@ -169,8 +178,8 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         $headers = @{}
         $headers['X-CmdletName'] = $Name
         $headers['Prefer'] = "odata.maxpagesize=$batchSize"
-        $headers['connection-id'] = $script:ConnectionContext.connectionId
-        $headers['X-AnchorMailbox'] =$script:ConnectionContext.anchorMailbox
+        $headers['connection-id'] = $Connection.connectionId
+        $headers['X-AnchorMailbox'] =$Connection.anchorMailbox
 
         #make sure that hashTable in parameters is properly decorated
         foreach($key in $Parameters.Keys)
@@ -195,7 +204,7 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                     #new request id for each request
                     $headers['client-request-id'] = [Guid]::NewGuid().ToString()
                     #provide up to date token for each request of commands returning paged results that may take long to complete
-                    $headers['Authorization'] = (Get-ExoToken).CreateAuthorizationHeader()
+                    $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
                     Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
                     $splat = @{
                         Uri = $pageUri
