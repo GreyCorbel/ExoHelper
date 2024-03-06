@@ -222,6 +222,10 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                     }
                     else
                     {
+                        if($psversionTable.PSVersion -gt '7.4') #7.4+ supports ProgressAction
+                        {
+                            $splat['SkipHeaderValidation'] = $true
+                        }
                         $splat['ProgressAction'] = 'SilentlyContinue'
                     }
                     $response = Invoke-WebRequest @splat
