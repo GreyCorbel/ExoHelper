@@ -224,9 +224,8 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                     {
                         if($psversionTable.PSVersion -gt '7.4') #7.4+ supports ProgressAction
                         {
-                            $splat['SkipHeaderValidation'] = $true
+                            $splat['ProgressAction'] = 'SilentlyContinue'
                         }
-                        $splat['ProgressAction'] = 'SilentlyContinue'
                     }
                     $response = Invoke-WebRequest @splat
                     #we may process the headers in the future to see rate limit remaining, etc.
