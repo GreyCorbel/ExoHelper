@@ -150,6 +150,10 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         $ShowWarnings,
 
         [switch]
+            #If we want to remove odata type descriptor properties from the output
+        $RemoveOdataProperties,
+
+        [switch]
         #If we want to include rate limits reported by REST API to verbose output
         $ShowRateLimits,
 
@@ -161,7 +165,7 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
     begin
     {
         $body = @{}
-        $batchSize = 1000
+        $batchSize = 100
         $uri = $Connection.ConnectionUri
         if($PropertiesToLoad.Count -gt 0)
         {
@@ -241,7 +245,13 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
                         }
                     }
                     $resultsRetrieved+=$responseData.value.Count
-                    $responseData.value
+                    if($RemoveOdataProperties)
+                    {
+                        $responseData.value | RemoveExoOdataProperties
+                    }
+                    else {
+                        $responseData.value
+                    }
                     $pageUri = $responseData.'@odata.nextLink'
                 }
                 catch  {
@@ -321,5 +331,31 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
     {
         #restore progress preference
         $progressPreference = $pref
+    }
+}
+
+function RemoveExoOdataProperties
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]
+        $Object
+    )
+    begin
+    {
+        $propsToRemove = $null
+    }
+    process
+    {
+        if($null -eq $propsToRemove)
+        {
+            $propsToRemove = $Object.PSObject.Properties | Where-Object { $_.Name.IndexOf('@') -ge 0 }
+        }
+        foreach($prop in $propsToRemove)
+        {
+            $Object.PSObject.Properties.Remove($prop.Name)
+        }
+        $Object
     }
 }
