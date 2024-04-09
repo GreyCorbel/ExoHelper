@@ -100,12 +100,7 @@ param
 function Get-ExoDefaultClientId
 {
     [CmdletBinding()]
-    param
-    (
-        [Parameter()]
-        [switch]
-        $IPPS
-    )
+    param ( )
     process
     {
         'fb78d390-0c51-40cd-8e17-fdbfab77341b'
@@ -134,6 +129,8 @@ Retieve authorizatin header for calling EXO REST API
 param
     (
         [Parameter()]
+        #Connection context as returned by New-ExoConnection
+        #When not specified, uses most recently created connection context
         $Connection = $script:ConnectionContext
     )
 
@@ -169,6 +166,15 @@ Invoke-ExoCommand -Name 'Get-Mailbox' -Parameters @{Identity = 'JohnDoe'} -Prope
 Description
 -----------
 This command retrieves mailbox of user JohnDoe and returns just netId property
+
+.EXAMPLE
+$connection = New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive | New-ExoConnection -IPPS
+Invoke-ExoCommand -Connection $connection -Name 'Get-Label' -PropertiesToLoad 'ImmutableId','DisplayName' -RemoveOdataProperties -ShowWarnings
+
+Description
+-----------
+This command creates connection for IPPS REST API, retrieves list of sensitivity labels returning only ImmutableId and DisplayName properties, and shows any warnings returned by IPPS REST API
+
 #>
     param
     (
@@ -211,6 +217,8 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         $ShowRateLimits,
 
         [Parameter()]
+        #Connection context as returned by New-ExoConnection
+        #When not specified, uses most recently created connection context
         $Connection = $script:ConnectionContext
 
     )
