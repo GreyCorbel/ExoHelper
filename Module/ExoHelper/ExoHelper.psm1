@@ -34,38 +34,57 @@ param
         #UPN of anchor mailbox
         #Default: UPN of caller or static system mailbox  (for app-only context)
         [string]
-        $AnchorMailbox
+        $AnchorMailbox,
+
+        [switch]
+        #Connection specialized to call IPPS commands
+        $IPPS
     )
 
     process
     {
         $Connection = [PSCustomObject]@{
             AuthenticationFactory = $AuthenticationFactory
-            TenantId = $tenantId
-            AnchorMailbox = "UPN:$anchorMailbox"
             ConnectionId = [Guid]::NewGuid().ToString()
-            ConnectionUri = "https://outlook.office365.com/adminapi/beta/$tenantId/InvokeCommand"
+            TenantId = $null
+            AnchorMailbox = $null
+            ConnectionUri = $null
+            IsIPPS = $IPPS.IsPresent
+        }
+        $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
+        $Connection.TenantId = $claims.tid
+        if($IPPS)
+        {
+            $Connection.ConnectionUri = "https://eur01b.ps.compliance.protection.outlook.com/AdminApi/beta/$($Connection.TenantId)/InvokeCommand"
+        }
+        else
+        {
+            $Connection.ConnectionUri = "https://outlook.office365.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
         }
 
         if([string]::IsNullOrEmpty($AnchorMailbox))
         {
-            $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
             if($null -ne $claims.upn)
             {
                 #using caller's mailbox
-                $anchorMailbox = $claims.upn
+                $Connection.AnchorMailbox = "UPN:$($claims.upn)"
             }
             else
             {
                 #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
-                $anchorMailbox = "SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@$tenantId"
+                $Connection.AnchorMailbox = "DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
             }
         }
-        $Connection.AnchorMailbox = "UPN:$anchorMailbox"
+        else
+        {
+            $Connection.AnchorMailbox = "UPN:$AnchorMailbox"
+        }
+
         $script:ConnectionContext = $Connection
         $script:ConnectionContext
     }
 }
+
 
 function Get-ExoToken
 {
@@ -94,7 +113,15 @@ param
 
     process
     {
-        Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes 'https://outlook.office365.com/.default'
+        if($Connection.IsIPPS)
+        {
+           $Scopes = "https://ps.compliance.protection.outlook.com/.default"
+        }
+        else
+        {
+            $Scopes = "https://outlook.office365.com/.default"
+        }
+        Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes $scopes
     }
 }
 
@@ -359,3 +386,18 @@ function RemoveExoOdataProperties
         $Object
     }
 }
+
+Add-Type -TypeDefinition @'
+    using System;
+    public static class ExoHelperStringExtensions
+    {
+        public static long FromExoSize(this string input)
+        {
+            var start = input.IndexOf('(');
+            var end = input.IndexOf(' ', start);
+            long output = -1;
+            long.TryParse(input.Substring(start + 1, end - start - 1).Replace(",", string.Empty), out output);
+            return output;
+        }
+    }
+'@
