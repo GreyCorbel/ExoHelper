@@ -11,22 +11,33 @@ function New-ExoConnection
     None
 
 .EXAMPLE
-New-ExoConnection -authenticationfactory $factory -TenantId mydomain.onmicrosoft.com
+New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive
+New-ExoConnection -authenticationfactory $factory
 
 Description
 -----------
 This command initializes connection to EXO REST API.
 It uses instance of AADAuthenticationFactory for authentication with EXO REST API
+
+.EXAMPLE
+New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive | New-ExoConnection -IPPS
+
+Description
+-----------
+This command initializes connection to IPPS REST API.
+It uses instance of AADAuthenticationFactory for authentication with IPPS REST API passed via pipeline
+
+
 #>
 param
     (
-        [Parameter(Mandatory)]
+        [Parameter(Mandatory, ValueFromPipeline)]
         #AAD authentication factory created via New-AadAuthenticationFactory
         #for user context, user factory created with clientId = fb78d390-0c51-40cd-8e17-fdbfab77341b (clientId of ExchangeOnlineManagement module) or your app with appropriate scopes assigned
         $AuthenticationFactory,
         
-        [Parameter(Mandatory)]
-        #Tenant ID - tenant native domain (xxx.onmicrosoft.com)
+        [Parameter()]
+        #Tenant ID when not the same as specified for factory - tenant native domain (xxx.onmicrosoft.com, or tenant GUID)
         [string]
         $TenantId,
         
@@ -37,7 +48,8 @@ param
         $AnchorMailbox,
 
         [switch]
-        #Connection specialized to call IPPS commands
+        #Connection is specialized to call IPPS commands
+        #If not present, connection is specialized to call Exchange Online commands
         $IPPS
     )
 
@@ -85,6 +97,20 @@ param
     }
 }
 
+function Get-ExoDefaultClientId
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter()]
+        [switch]
+        $IPPS
+    )
+    process
+    {
+        'fb78d390-0c51-40cd-8e17-fdbfab77341b'
+    }
+}
 
 function Get-ExoToken
 {
@@ -211,6 +237,7 @@ This command retrieves mailbox of user JohnDoe and returns just netId property
         $headers['Prefer'] = "odata.maxpagesize=$batchSize"
         $headers['connection-id'] = $Connection.connectionId
         $headers['X-AnchorMailbox'] =$Connection.anchorMailbox
+        $headers['X-ClientApplication'] ='ExoHelper'
 
         #make sure that hashTable in parameters is properly decorated
         foreach($key in $Parameters.Keys)
