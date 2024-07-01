@@ -1,3 +1,4 @@
+using namespace ExoHelper
 function New-ExoConnection
 {
 <#
@@ -244,7 +245,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $headers['X-CmdletName'] = $Name
         $headers['Prefer'] = "odata.maxpagesize=$batchSize"
         $headers['connection-id'] = $Connection.connectionId
-        $headers['X-AnchorMailbox'] =$Connection.anchorMailbox
+        $headers['X-AnchorMailbox'] = $Connection.anchorMailbox
         $headers['X-ClientApplication'] ='ExoHelper'
 
         #make sure that hashTable in parameters is properly decorated
@@ -264,130 +265,118 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $pageUri = $uri
         do
         {
-            do
-            {
-                try {
-                    #new request id for each request
-                    $headers['client-request-id'] = [Guid]::NewGuid().ToString()
-                    #provide up to date token for each request of commands returning paged results that may take long to complete
-                    $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
-                    Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
-                    $splat = @{
-                        Uri = $pageUri
-                        Method = 'Post'
-                        Body = ($body | ConvertTo-Json -Depth 9)
-                        Headers = $headers
-                        ContentType = 'application/json'
-                        ErrorAction = 'Stop'
-                        Verbose = $false
-                    }
-                    #add edition-specific parameters
-                    if($PSEdition -eq 'Desktop')
-                    {
-                        $splat['UseBasicParsing'] = $true
-                    }
-                    else
-                    {
-                        if($psversionTable.PSVersion -gt '7.4') #7.4+ supports ProgressAction
-                        {
-                            $splat['ProgressAction'] = 'SilentlyContinue'
-                        }
-                    }
-                    $response = Invoke-WebRequest @splat
-                    #we may process the headers in the future to see rate limit remaining, etc.
-                    $responseHeaders = $response.Headers
-    
-                    $responseData = $response.Content | ConvertFrom-Json
-                    
-                    if($ShowWarnings)
-                    {
-                        foreach($warning in $responseData.'@adminapi.warnings')
-                        {
-                            Write-Warning $warning
-                        }
-                    }
-                    $resultsRetrieved+=$responseData.value.Count
-                    if($RemoveOdataProperties)
-                    {
-                        $responseData.value | RemoveExoOdataProperties
-                    }
-                    else {
-                        $responseData.value
-                    }
-                    $pageUri = $responseData.'@odata.nextLink'
+            try {
+                #new request id for each request
+                $headers['client-request-id'] = [Guid]::NewGuid().ToString()
+                #provide up to date token for each request of commands returning paged results that may take long to complete
+                $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
+                Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
+                $splat = @{
+                    Uri = $pageUri
+                    Method = 'Post'
+                    Body = ($body | ConvertTo-Json -Depth 9)
+                    Headers = $headers
+                    ContentType = 'application/json'
+                    ErrorAction = 'Stop'
+                    Verbose = $false
                 }
-                catch  {
-                    $ex = $_.exception
-                    if($PSVersionTable.psEdition -eq 'Desktop')
-                    {
-                        if($ex -is [System.Net.WebException])
-                        {
-                            if($ex.response.statusCode -ne 429)
-                            {
-                                throw
-                            }
-                        }
-                        else
-                        {
-                            #different exception
-                            throw
-                        }
-                    }
-                    else
-                    {
-                        #Core
-                        if($ex -is [Microsoft.PowerShell.Commands.HttpResponseException])
-                        {
-                            if($ex.statusCode -ne 429)
-                            {
-                                throw
-                            }
-                        }
-                        else
-                        {
-                            #different exception type
-                            throw
-                        }
-                    }
-                    $responseHeaders = $ex.Response.Headers
-                    $retries++
-                    if($ShowWarnings)
-                    {
-                        Write-Warning "Retry #$retries"
-                    }
-                    else
-                    {
-                        Write-Verbose "Retry #$retries"
-                    }
-                    if($retries -gt $MaxRetries)
-                    {
-                        #max retries exhausted
-                        throw
-                    }
-                    #wait some time
-                    Start-Sleep -Seconds $retries
-                }
-                finally
+                #add edition-specific parameters
+                if($PSEdition -eq 'Desktop')
                 {
-                    if($ShowRateLimits)
+                    $splat['UseBasicParsing'] = $true
+                }
+                else
+                {
+                    if($psversionTable.PSVersion -gt '7.4') #7.4+ supports ProgressAction
                     {
-                        if($null -ne $responseHeaders -and $null -ne $responseHeaders['Rate-Limit-Remaining'] -and $null -ne $responseHeaders['Rate-Limit-Reset'])
+                        #disable progress bar that slows things down
+                        $splat['ProgressAction'] = 'SilentlyContinue'
+                    }
+                }
+                $response = Invoke-WebRequest @splat
+                #we may process the headers in the future to see rate limit remaining, etc.
+                $responseHeaders = $response.Headers
+
+                $responseData = $response.Content | ConvertFrom-Json
+                
+                if($ShowWarnings)
+                {
+                    foreach($warning in $responseData.'@adminapi.warnings')
+                    {
+                        Write-Warning $warning
+                    }
+                }
+                $resultsRetrieved+=$responseData.value.Count
+                if($RemoveOdataProperties)
+                {
+                    $responseData.value | RemoveExoOdataProperties
+                }
+                else {
+                    $responseData.value
+                }
+                $pageUri = $responseData.'@odata.nextLink'
+            }
+            catch  {
+                $ex = $_.exception
+                if(($PSVersionTable.psEdition -eq 'Desktop' -and $ex -is [System.Net.WebException]) -or ($PSVersionTable.psEdition -eq 'Core' -and $ex -is [Microsoft.PowerShell.Commands.HttpResponseException]))
+                {
+                    $responseHeaders = $ex.Response.Headers
+                    $details = ($_.errordetails.message | ConvertFrom-Json).error.details
+                    $errorData = $details.message.split('|')
+                    if($errorData.count -eq 3)
+                    {
+                        $ExoException = new-object ExoException -ArgumentList @($ex.Response.StatusCode, $errorData[0], $errorData[1], $errorData[2], $ex)
+                    }
+
+                    if($ex.response.statusCode -ne 429 -or $retries -ge $MaxRetries)
+                    {
+                        #different error or max retries exceeded
+                        if($null -ne $exoException)
                         {
-                            if($PSVersionTable.psEdition -eq 'Desktop')
-                            {
-                                Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'])"
-                            }
-                            else
-                            {
-                                #Core
-                                Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'][0])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'][0])"
-                            }
+                            throw $exoException
+                        }
+                        else
+                        {
+                            throw
                         }
                     }
                 }
-            }while($null -ne $pageUri -and $resultsRetrieved -le $ResultSize)
-            break
-        }while($true)
+                else
+                {
+                    #different exception type
+                    throw
+                }
+                $retries++
+                if($ShowWarnings)
+                {
+                    Write-Warning "Retry #$retries"
+                }
+                else
+                {
+                    Write-Verbose "Retry #$retries"
+                }
+                #wait some time
+                Start-Sleep -Seconds $retries
+            }
+            finally
+            {
+                if($ShowRateLimits)
+                {
+                    if($null -ne $responseHeaders -and $null -ne $responseHeaders['Rate-Limit-Remaining'] -and $null -ne $responseHeaders['Rate-Limit-Reset'])
+                    {
+                        if($PSVersionTable.psEdition -eq 'Desktop')
+                        {
+                            Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'])"
+                        }
+                        else
+                        {
+                            #Core
+                            Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'][0])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'][0])"
+                        }
+                    }
+                }
+            }
+        }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize)
     }
     end
     {
@@ -424,15 +413,34 @@ function RemoveExoOdataProperties
 
 Add-Type -TypeDefinition @'
     using System;
-    public static class ExoHelperStringExtensions
+    using System.Net;
+    namespace ExoHelper
     {
-        public static long FromExoSize(this string input)
+        public static class ExoHelperStringExtensions
         {
-            var start = input.IndexOf('(');
-            var end = input.IndexOf(' ', start);
-            long output = -1;
-            long.TryParse(input.Substring(start + 1, end - start - 1).Replace(",", string.Empty), out output);
-            return output;
+            public static long FromExoSize(this string input)
+            {
+                var start = input.IndexOf('(');
+                var end = input.IndexOf(' ', start);
+                long output = -1;
+                long.TryParse(input.Substring(start + 1, end - start - 1).Replace(",", string.Empty), out output);
+                return output;
+            }
+        }
+        public class ExoException : Exception
+        {
+            public HttpStatusCode? StatusCode { get; set; }
+            public string ExoErrorCode { get; set; }
+            public string ExoErrorType { get; set; }
+            public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message):this(statusCode, exoCode, exoErrorType, message, null)
+            {
+            }
+            public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message, Exception innerException):base(message, innerException)
+            {
+                StatusCode = statusCode;
+                ExoErrorCode = exoCode;
+                ExoErrorType = exoErrorType;
+            }
         }
     }
 '@
