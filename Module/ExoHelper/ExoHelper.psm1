@@ -263,6 +263,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $retries = 0
         $resultsRetrieved = 0
         $pageUri = $uri
+        $shouldContinue = $true #to support ErrorAction = SilentlyContinue that does not throw
         do
         {
             try {
@@ -321,7 +322,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 if(($PSVersionTable.psEdition -eq 'Desktop' -and $ex -is [System.Net.WebException]) -or ($PSVersionTable.psEdition -eq 'Core' -and $ex -is [Microsoft.PowerShell.Commands.HttpResponseException]))
                 {
                     $responseHeaders = $ex.Response.Headers
-                    $details = ($_.errordetails.message | ConvertFrom-Json).error.details
+                    $details = ($_.errordetails.message | ConvertFrom-Json).error
                     $errorData = $details.message.split('|')
                     if($errorData.count -eq 3)
                     {
@@ -333,10 +334,12 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         #different error or max retries exceeded
                         if($null -ne $exoException)
                         {
+                            $shouldContinue = $false
                             throw $exoException
                         }
                         else
                         {
+                            $shouldContinue = $false
                             throw
                         }
                     }
@@ -344,6 +347,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 else
                 {
                     #different exception type
+                    $shouldContinue = $false
                     throw
                 }
                 $retries++
@@ -376,7 +380,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                 }
             }
-        }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize)
+        }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize -and $shouldContinue)
     }
     end
     {
