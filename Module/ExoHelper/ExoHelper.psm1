@@ -205,6 +205,12 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             #1000 is a minimum, and min increment is 1000
         $ResultSize = [int]::MaxValue,
 
+        [Parameter()]
+        [int]
+            #Max results to return in single request
+            #Default is 100
+        $PageSize = 100,
+
         [switch]
             #If we want to write any warnings returned by EXO REST API
         $ShowWarnings,
@@ -227,7 +233,16 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
     begin
     {
         $body = @{}
-        $batchSize = 100
+        if($PageSize -gt 1000)
+        {
+            $batchSize = 1000
+        }
+        if($PageSize -le 0)
+        {
+            $batchSize = 100
+        }
+        $batchSize = $pageSize
+
         $uri = $Connection.ConnectionUri
         if($PropertiesToLoad.Count -gt 0)
         {
@@ -271,7 +286,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 $headers['client-request-id'] = [Guid]::NewGuid().ToString()
                 #provide up to date token for each request of commands returning paged results that may take long to complete
                 $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
-                Write-Verbose "RequestId: $($headers['client-request-id'])`tUri: $pageUri"
+                Write-Verbose "$([DateTime]::UtcNow.ToString('o'))`tResults:$resultsRetrieved`tRequestId: $($headers['client-request-id'])`tUri: $pageUri"
                 $splat = @{
                     Uri = $pageUri
                     Method = 'Post'
