@@ -119,7 +119,9 @@ PrivateData = @{
         # ExternalModuleDependencies = @()
 
     } # End of PSData hashtable
-
+    Configuration = @{
+        PublicKey = '<RSAKeyValue><Modulus>zijAI8ZARws7IndymgRzuII3o3u97WwXJ0Vnv5qCqnhT8tFsi3HZ8inFgYyUpMl00YyVcJIxs4VuyOXbQczOJDxfKGiLdZ6CczvmxqI8puzXs8v00YJiBP3vALVkl3C5K7S/E1Cz+neArFQZN43WrzodH7W0VK+XUlXFjtkoz9ImzXrNW02oYoNdvIO4uWoYtWQV0kYTv8wZpRBi1FcgthDQM0u2XTiPBd9bFq1KfmoOzMf4vl/kTOI5CpwwHMZQOl7Gbh2tTiu3ZzdTWo46bYNeQJYnZRiwEF/A4wFneJrMFWyt454h8d0PxCIdtGBu4KwYY0X4RfAuugxOKI44wQ==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>'
+    }
 } # End of PrivateData hashtable
 
 # HelpInfo URI of this module

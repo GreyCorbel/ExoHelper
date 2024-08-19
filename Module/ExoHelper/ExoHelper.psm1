@@ -132,9 +132,19 @@ param
         [Parameter()]
         #Connection context as returned by New-ExoConnection
         #When not specified, uses most recently created connection context
-        $Connection = $script:ConnectionContext
+        $Connection = $script:ConnectionContext,
+        #Forces reauthentication
+        #Usefiu when want to continue working after PIN JIT re-elevation
+        [switch]$ForceRefresh
     )
 
+    begin
+    {
+        if($null -eq $Connection )
+        {
+            throw 'Call New-ExoConnection first'
+        }
+    }
     process
     {
         if($Connection.IsIPPS)
@@ -145,7 +155,43 @@ param
         {
             $Scopes = "https://outlook.office365.com/.default"
         }
-        Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes $scopes
+        Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes $scopes -ForceRefresh:$ForceRefresh
+    }
+}
+
+function Encrypt-Value
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyString()]
+        [AllowNull()]
+        $UnsecureString
+    )
+    begin
+    {
+        $PublicKey = $MyInvocation.MyCommand.Module.PrivateData.Configuration.PublicKey
+    }
+    process
+    {
+        # Handling public key unavailability in client module for protection gracefully
+        if ([string]::IsNullOrWhiteSpace($PublicKey))
+        {
+            # Error out if we are not in a position to protect the sensitive data before sending it over wire.
+            throw 'Public key not found in the module definition';
+        }
+
+        if ($UnsecureString -ne '' -and $UnsecureString -ne $null)
+        {
+            $RSA = New-Object -TypeName System.Security.Cryptography.RSACryptoServiceProvider;
+            $RSA.FromXmlString($PublicKey);
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($UnsecureString);
+            $result = [byte[]]$RSA.Encrypt($bytes, $false);
+            $RSA.Dispose();
+            $result = [System.Convert]::ToBase64String($result);
+            return $result;
+        }
+        return $UnsecureString;
     }
 }
 
@@ -264,11 +310,18 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $headers['X-ClientApplication'] ='ExoHelper'
 
         #make sure that hashTable in parameters is properly decorated
-        foreach($key in $Parameters.Keys)
+        $keys = @()
+        $Parameters.Keys | ForEach-Object { $keys += $_ }
+        foreach($key in $Keys)
         {
             if($Parameters[$key] -is [hashtable])
             {
                 $Parameters[$key]['@odata.type'] =  '#Exchange.GenericHashTable'
+            }
+            if($Parameters[$key] -is [System.Security.SecureString])
+            {
+                $cred = new-object System.Net.NetworkCredential -ArgumentList @($null, $Parameters[$key])
+                $Parameters[$key] = Encrypt-Value -UnsecureString $cred.Password
             }
         }
         $body['CmdletInput'] = @{
@@ -338,10 +391,21 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 {
                     $responseHeaders = $ex.Response.Headers
                     $details = ($_.errordetails.message | ConvertFrom-Json).error
-                    $errorData = $details.message.split('|')
+                    if($null -ne $details.details)
+                    {
+                        $errorData = $details.details.message.split('|')
+                    }
+                    else
+                    {
+                        $errorData = $details.message.split('|')
+                    }
                     if($errorData.count -eq 3)
                     {
                         $ExoException = new-object ExoException -ArgumentList @($ex.Response.StatusCode, $errorData[0], $errorData[1], $errorData[2], $ex)
+                    }
+                    else
+                    {
+                        $ExoException = new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', $details.code, $details.message, $ex)
                     }
 
                     if($ex.response.statusCode -ne 429 -or $retries -ge $MaxRetries)
