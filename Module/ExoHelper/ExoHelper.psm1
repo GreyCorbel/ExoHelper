@@ -1,4 +1,5 @@
 using namespace ExoHelper
+#region Public functions
 function New-ExoConnection
 {
 <#
@@ -97,7 +98,6 @@ param
         $script:ConnectionContext
     }
 }
-
 function Get-ExoDefaultClientId
 {
     [CmdletBinding()]
@@ -156,42 +156,6 @@ param
             $Scopes = "https://outlook.office365.com/.default"
         }
         Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes $scopes -ForceRefresh:$ForceRefresh
-    }
-}
-
-function Encrypt-Value
-{
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [AllowEmptyString()]
-        [AllowNull()]
-        $UnsecureString
-    )
-    begin
-    {
-        $PublicKey = $MyInvocation.MyCommand.Module.PrivateData.Configuration.PublicKey
-    }
-    process
-    {
-        # Handling public key unavailability in client module for protection gracefully
-        if ([string]::IsNullOrWhiteSpace($PublicKey))
-        {
-            # Error out if we are not in a position to protect the sensitive data before sending it over wire.
-            throw 'Public key not found in the module definition';
-        }
-
-        if ($UnsecureString -ne '' -and $UnsecureString -ne $null)
-        {
-            $RSA = New-Object -TypeName System.Security.Cryptography.RSACryptoServiceProvider;
-            $RSA.FromXmlString($PublicKey);
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($UnsecureString);
-            $result = [byte[]]$RSA.Encrypt($bytes, $false);
-            $RSA.Dispose();
-            $result = [System.Convert]::ToBase64String($result);
-            return $result;
-        }
-        return $UnsecureString;
     }
 }
 
@@ -273,7 +237,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         #Connection context as returned by New-ExoConnection
         #When not specified, uses most recently created connection context
         $Connection = $script:ConnectionContext
-
     )
 
     begin
@@ -321,7 +284,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             if($Parameters[$key] -is [System.Security.SecureString])
             {
                 $cred = new-object System.Net.NetworkCredential -ArgumentList @($null, $Parameters[$key])
-                $Parameters[$key] = Encrypt-Value -UnsecureString $cred.Password
+                $Parameters[$key] = EncryptValue -UnsecureString $cred.Password
             }
         }
         $body['CmdletInput'] = @{
@@ -387,38 +350,21 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             }
             catch  {
                 $ex = $_.exception
+                $responseHeaders = $ex.Response.Headers
                 if(($PSVersionTable.psEdition -eq 'Desktop' -and $ex -is [System.Net.WebException]) -or ($PSVersionTable.psEdition -eq 'Core' -and $ex -is [Microsoft.PowerShell.Commands.HttpResponseException]))
                 {
-                    $responseHeaders = $ex.Response.Headers
-                    $details = ($_.errordetails.message | ConvertFrom-Json).error
-                    if($null -ne $details.details)
-                    {
-                        $errorData = $details.details.message.split('|')
-                    }
-                    else
-                    {
-                        $errorData = $details.message.split('|')
-                    }
-                    if($errorData.count -eq 3)
-                    {
-                        $ExoException = new-object ExoException -ArgumentList @($ex.Response.StatusCode, $errorData[0], $errorData[1], $errorData[2], $ex)
-                    }
-                    else
-                    {
-                        $ExoException = new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', $details.code, $details.message, $ex)
-                    }
+                    $exoException = $_ | Get-ExoException
 
                     if($ex.response.statusCode -ne 429 -or $retries -ge $MaxRetries)
                     {
                         #different error or max retries exceeded
+                        $shouldContinue = $false
                         if($null -ne $exoException)
                         {
-                            $shouldContinue = $false
                             throw $exoException
                         }
                         else
                         {
-                            $shouldContinue = $false
                             throw
                         }
                     }
@@ -468,6 +414,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
     }
 }
 
+#endregion Public functions
+
+#region Private functions
+#removes odata type descriptor properties from the object
 function RemoveExoOdataProperties
 {
     [CmdletBinding()]
@@ -494,6 +444,129 @@ function RemoveExoOdataProperties
     }
 }
 
+#parses Exo REST Api error response into ExoException object. if possible
+function Get-ExoException
+{
+    param
+    (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [System.Management.Automation.ErrorRecord]
+        $ErrorRecord
+    )
+
+    process
+    {
+        try
+        {
+            $ex = $ErrorRecord.exception
+            
+            if($null -ne $ErrorRecord.ErrorDetails.Message)
+            {
+                $details = ($ErrorRecord.errordetails.message | ConvertFrom-Json).error
+                if($null -ne $details.details.message)
+                {
+                    $errorData = $details.details.message.split('|')
+                }
+                else
+                {   if($null -ne $details.message)
+                    {
+                        $errorData = $details.message.split('|')
+                    }
+                }
+                if($errorData.count -eq 3)
+                {
+                    new-object ExoException -ArgumentList @($ex.Response.StatusCode, $errorData[0], $errorData[1], $errorData[2], $ex)
+                }
+                else
+                {
+                    new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', $details.code, $details.message, $ex)
+                }
+            }
+        }
+        catch
+        {
+            #do nothing
+        }
+        # does not return anything if not in the expected format
+    }
+}
+
+#encrypts data using MS provided public key
+#key stored in module private data
+#MS rotates the key regularly; at least one version back is supported
+function EncryptValue
+{
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [AllowEmptyString()]
+        [AllowNull()]
+        $UnsecureString,
+        [Parameter()]
+        [string]$Key = $script:PublicKey
+    )
+    process
+    {
+        # Handling public key unavailability in client module for protection gracefully
+        if ([string]::IsNullOrWhiteSpace($Key))
+        {
+            # Error out if we are not in a position to protect the sensitive data before sending it over wire.
+            throw 'Public key not loaded. Cannot encrypt sensitive data.';
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($UnsecureString))
+        {
+            $RSA = New-Object -TypeName System.Security.Cryptography.RSACryptoServiceProvider;
+            $RSA.FromXmlString($Key);
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($UnsecureString);
+            $result = [byte[]]$RSA.Encrypt($bytes, $false);
+            $RSA.Dispose();
+            $result = [System.Convert]::ToBase64String($result);
+            return $result;
+        }
+        return $UnsecureString;
+    }
+}
+
+Function Init
+{
+    param()
+
+    process
+    {
+        $PublicKeyConfig = $MyInvocation.MyCommand.Module.PrivateData.Configuration.ExoPublicKey
+        $needsRefresh = $false
+        if(-not [System.IO.File]::Exists($PublicKeyConfig.LocalFile))
+        {
+            $needsRefresh = $true
+        }
+        else {
+            # local file exists
+            $fileInfo = [System.IO.FileInfo]::new($PublicKeyConfig.LocalFile)
+            if($fileInfo.LastWriteTime -lt (Get-Date).AddDays(-7))
+            {
+                $needsRefresh = $true
+            }
+        }
+        if($needsRefresh)
+        {
+            try
+            {
+                Invoke-WebRequest -Uri $PublicKeyConfig.Link -OutFile $PublicKeyConfig.LocalFile -ErrorAction Stop
+            }
+            catch
+            {
+                write-warning 'Local copy of public key file is ooutdated or does not exist and failed to download public key. Module may not work correctly.'
+                $script:PublicKey = $null
+                return
+            }
+        }
+        $script:PublicKey = [System.IO.File]::ReadAllText($PublicKeyConfig.LocalFile)
+    }
+}
+
+#endregion Private functions
+#region Compiled helpers
 Add-Type -TypeDefinition @'
     using System;
     using System.Net;
@@ -501,6 +574,7 @@ Add-Type -TypeDefinition @'
     {
         public static class ExoHelperStringExtensions
         {
+            //converts Exo size string to long
             public static long FromExoSize(this string input)
             {
                 var start = input.IndexOf('(');
@@ -510,6 +584,8 @@ Add-Type -TypeDefinition @'
                 return output;
             }
         }
+
+        //exception class for ExoHelper module
         public class ExoException : Exception
         {
             public HttpStatusCode? StatusCode { get; set; }
@@ -527,3 +603,7 @@ Add-Type -TypeDefinition @'
         }
     }
 '@
+
+#endregion Compiled helpers
+
+Init

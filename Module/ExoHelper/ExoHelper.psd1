@@ -120,7 +120,14 @@ PrivateData = @{
 
     } # End of PSData hashtable
     Configuration = @{
-        PublicKey = '<RSAKeyValue><Modulus>zijAI8ZARws7IndymgRzuII3o3u97WwXJ0Vnv5qCqnhT8tFsi3HZ8inFgYyUpMl00YyVcJIxs4VuyOXbQczOJDxfKGiLdZ6CczvmxqI8puzXs8v00YJiBP3vALVkl3C5K7S/E1Cz+neArFQZN43WrzodH7W0VK+XUlXFjtkoz9ImzXrNW02oYoNdvIO4uWoYtWQV0kYTv8wZpRBi1FcgthDQM0u2XTiPBd9bFq1KfmoOzMf4vl/kTOI5CpwwHMZQOl7Gbh2tTiu3ZzdTWo46bYNeQJYnZRiwEF/A4wFneJrMFWyt454h8d0PxCIdtGBu4KwYY0X4RfAuugxOKI44wQ==</Modulus><Exponent>AQAB</Exponent></RSAKeyValue>'
+        # Microsoft-generated public key that protects sensitive information sent to Exo REST API
+        # Rotated regularly and few version back are supported
+        # Takem from downloaded temp module that comes as a result of Connect-ExchangeOnline
+        ExoPublicKey = @{
+            Link = 'https://raw.githubusercontent.com/GreyCorbel/ExoHelper/main/PublicKey.xml'
+            LocalFile = "$env:TEMP\ExoHelper_PublicKey.xml"
+        }
+        
     }
 } # End of PrivateData hashtable
 
