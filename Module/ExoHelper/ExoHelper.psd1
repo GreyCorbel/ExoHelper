@@ -125,9 +125,8 @@ PrivateData = @{
         # Takem from downloaded temp module that comes as a result of Connect-ExchangeOnline
         ExoPublicKey = @{
             Link = 'https://raw.githubusercontent.com/GreyCorbel/ExoHelper/main/PublicKey.xml'
-            LocalFile = "$env:TEMP\ExoHelper_PublicKey.xml"
+            LocalFile = "ExoHelper_PublicKey.xml"
         }
-        
     }
 } # End of PrivateData hashtable
 

@@ -535,14 +535,16 @@ Function Init
     process
     {
         $PublicKeyConfig = $MyInvocation.MyCommand.Module.PrivateData.Configuration.ExoPublicKey
+        $cacheFile = [System.IO.Path]::Combine($env:TEMP, $PublicKeyConfig.LocalFile)
         $needsRefresh = $false
-        if(-not [System.IO.File]::Exists($PublicKeyConfig.LocalFile))
+
+        if(-not [System.IO.File]::Exists($cacheFile))
         {
             $needsRefresh = $true
         }
         else {
             # local file exists
-            $fileInfo = [System.IO.FileInfo]::new($PublicKeyConfig.LocalFile)
+            $fileInfo = [System.IO.FileInfo]::new($cacheFile)
             if($fileInfo.LastWriteTime -lt (Get-Date).AddDays(-7))
             {
                 $needsRefresh = $true
@@ -552,7 +554,7 @@ Function Init
         {
             try
             {
-                Invoke-WebRequest -Uri $PublicKeyConfig.Link -OutFile $PublicKeyConfig.LocalFile -ErrorAction Stop
+                Invoke-WebRequest -Uri $PublicKeyConfig.Link -OutFile $cacheFile -ErrorAction Stop
             }
             catch
             {
@@ -561,7 +563,7 @@ Function Init
                 return
             }
         }
-        $script:PublicKey = [System.IO.File]::ReadAllText($PublicKeyConfig.LocalFile)
+        $script:PublicKey = [System.IO.File]::ReadAllText($cacheFile)
     }
 }
 
