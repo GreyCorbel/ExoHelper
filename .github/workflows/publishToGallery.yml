@@ -81,7 +81,8 @@ jobs:
           $env:PSModulePath = "$env:PSModulePath;$env:GITHUB_WORKSPACE\Module"
           "PSModulePath: $env:PSModulePath"
 
-          Publish-Module -Path "$env:GITHUB_WORKSPACE\Module\ExoHelper" -NuGetApiKey "$env:SECRET"
+          Publish-PSResource -Path "$env:GITHUB_WORKSPACE\Module\ExoHelper" -Repository PSGallery -APIKey "$env:SECRET"
+          #Publish-Module -Path "$env:GITHUB_WORKSPACE\Module\ExoHelper" -NuGetApiKey "$env:SECRET"
         }
         catch
         {
