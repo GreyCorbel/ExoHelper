@@ -482,6 +482,21 @@ function Get-ExoException
                     new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', $details.code, $details.message, $ex)
                 }
             }
+            else
+            {
+                $details = ($ErrorRecord.errordetails | ConvertFrom-Json).error
+                if($null -ne $details.innerError.internalexception)
+                {
+                    if($null -ne $details.innerError.internalexception.message)
+                    {
+                        new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', 'RequestProcessingError', $details.innerError.internalexception.message, $ex)
+                    }
+                    else
+                    {
+                        new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', 'RequestProcessingError', $details.innerError.internalexception, $ex)
+                    }
+                }
+            }
         }
         catch
         {
