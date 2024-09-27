@@ -29,3 +29,7 @@ $params = @{
 Invoke-ExoCommand -Name 'Get-Mailbox' -Parameters $params -Connection $Connection
 
 ```
+_Note_: To protect sensitive data (e.g. passwords to be set on newly created mailboxes), Exchange Online uses RSA Key pair with public key embedded into temporary module that dynamically downloads when running `Connect-ExchangeOnline`:
+![image](https://github.com/user-attachments/assets/492d9293-1d1a-4500-9d49-2c96f73a264a)
+Key pair is occassionally rotated. To allow usage of commands that work with sentitive information in ExoHelper module, public key that comes with Exchange Online module is also stored and regularly refreshed in this repo, and ExoHelper module loads it from here when imported, and caches on it on machine where it is executed. When not able to download the public key, or cached key gets outdated, module still works, but commands that work with sensitive data will fail.
+I wish Microsoft would allow retrieval of publis key directly from their REST API!
