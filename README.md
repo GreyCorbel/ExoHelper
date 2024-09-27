@@ -17,7 +17,7 @@ $clientSecret = 'yyy'   #client secret for app registration
 $tenantId = 'mydomain.onmicrosoft.com'
 
 $factory = New-AadAuthenticationFactory -TenantId $tenantId -ClientId $clientId -ClientSecret $clientSecret
-#initialize the Exo connection
+#initialize the Exo connection. Tenant ID is taken from instance of AAD AuthenticationFactory when not specified explicitly
 $Connection = New-ExoConnection -Authenticationfactory $factory
 
 #call EXO command
