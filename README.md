@@ -18,7 +18,7 @@ $tenantId = 'mydomain.onmicrosoft.com'
 
 $factory = New-AadAuthenticationFactory -TenantId $tenantId -ClientId $clientId -ClientSecret $clientSecret
 #initialize the Exo connection
-$Connection = New-ExoConnection -Authenticationfactory $factory -TenantId $tenantId
+$Connection = New-ExoConnection -Authenticationfactory $factory
 
 #call EXO command
 $params = @{
