@@ -1,103 +1,4 @@
-using namespace ExoHelper
-#region Public functions
-function New-ExoConnection
-{
-<#
-.SYNOPSIS
-    Initializes EXO connection
-
-.DESCRIPTION
-    Initializes EXO connection
-
-.OUTPUTS
-    None
-
-.EXAMPLE
-New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive
-New-ExoConnection -authenticationfactory $factory
-
-Description
------------
-This command initializes connection to EXO REST API.
-It uses instance of AADAuthenticationFactory for authentication with EXO REST API
-
-.EXAMPLE
-New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive | New-ExoConnection -IPPS
-
-Description
------------
-This command initializes connection to IPPS REST API.
-It uses instance of AADAuthenticationFactory for authentication with IPPS REST API passed via pipeline
-
-
-#>
-param
-    (
-        [Parameter(Mandatory, ValueFromPipeline)]
-        #AAD authentication factory created via New-AadAuthenticationFactory
-        #for user context, user factory created with clientId = fb78d390-0c51-40cd-8e17-fdbfab77341b (clientId of ExchangeOnlineManagement module) or your app with appropriate scopes assigned
-        $AuthenticationFactory,
-        
-        [Parameter()]
-        #Tenant ID when not the same as specified for factory - tenant native domain (xxx.onmicrosoft.com, or tenant GUID)
-        [string]
-        $TenantId,
-        
-        [Parameter()]
-        #UPN of anchor mailbox
-        #Default: UPN of caller or static system mailbox  (for app-only context)
-        [string]
-        $AnchorMailbox,
-
-        [switch]
-        #Connection is specialized to call IPPS commands
-        #If not present, connection is specialized to call Exchange Online commands
-        $IPPS
-    )
-
-    process
-    {
-        $Connection = [PSCustomObject]@{
-            AuthenticationFactory = $AuthenticationFactory
-            ConnectionId = [Guid]::NewGuid().ToString()
-            TenantId = $null
-            AnchorMailbox = $null
-            ConnectionUri = $null
-            IsIPPS = $IPPS.IsPresent
-        }
-        $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
-        $Connection.TenantId = $claims.tid
-        if($IPPS)
-        {
-            $Connection.ConnectionUri = "https://eur01b.ps.compliance.protection.outlook.com/AdminApi/beta/$($Connection.TenantId)/InvokeCommand"
-        }
-        else
-        {
-            $Connection.ConnectionUri = "https://outlook.office365.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
-        }
-
-        if([string]::IsNullOrEmpty($AnchorMailbox))
-        {
-            if($null -ne $claims.upn)
-            {
-                #using caller's mailbox
-                $Connection.AnchorMailbox = "UPN:$($claims.upn)"
-            }
-            else
-            {
-                #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
-                $Connection.AnchorMailbox = "DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
-            }
-        }
-        else
-        {
-            $Connection.AnchorMailbox = "UPN:$AnchorMailbox"
-        }
-
-        $script:ConnectionContext = $Connection
-        $script:ConnectionContext
-    }
-}
+#region Public commands
 function Get-ExoDefaultClientId
 {
     [CmdletBinding()]
@@ -107,7 +8,6 @@ function Get-ExoDefaultClientId
         'fb78d390-0c51-40cd-8e17-fdbfab77341b'
     }
 }
-
 function Get-ExoToken
 {
 <#
@@ -158,7 +58,6 @@ param
         Get-AadToken -Factory $Connection.AuthenticationFactory -Scopes $scopes -ForceRefresh:$ForceRefresh
     }
 }
-
 function Invoke-ExoCommand
 {
 <#
@@ -258,9 +157,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             $props = $PropertiesToLoad -join ','
             $uri = "$uri`?`$select=$props"
         }
-        #do not show progress from Invoke-WebRequest
-        $pref = $progressPreference
-        $progressPreference = 'SilentlyContinue'
     }
 
     process
@@ -303,209 +199,201 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 #provide up to date token for each request of commands returning paged results that may take long to complete
                 $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
                 Write-Verbose "$([DateTime]::UtcNow.ToString('o'))`tResults:$resultsRetrieved`tRequestId: $($headers['client-request-id'])`tUri: $pageUri"
-                $splat = @{
-                    Uri = $pageUri
-                    Method = 'Post'
-                    Body = ($body | ConvertTo-Json -Depth 9)
-                    Headers = $headers
-                    ContentType = 'application/json'
-                    ErrorAction = 'Stop'
-                    Verbose = $false
-                }
-                #add edition-specific parameters
-                if($PSEdition -eq 'Desktop')
+                $requestMessage = GetRequestMessage -Uri $pageUri -Headers $headers -Body ($body | ConvertTo-Json -Depth 9)
+                $response = $Connection.HttpClient.SendAsync($requestMessage).GetAwaiter().GetResult()
+                $requestMessage.Dispose()
+
+                if($null -ne $response.Content -and $response.StatusCode -ne [System.Net.HttpStatusCode]::NoContent)
                 {
-                    $splat['UseBasicParsing'] = $true
+                    $payload = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                    $responseData = $Payload | ConvertFrom-Json
                 }
                 else
                 {
-                    if($psversionTable.PSVersion -gt '7.4') #7.4+ supports ProgressAction
+                    $responseData = $null
+                }
+                if($response.IsSuccessStatusCode)
+                {
+                    if($null -ne $responseData)
                     {
-                        #disable progress bar that slows things down
-                        $splat['ProgressAction'] = 'SilentlyContinue'
+
+                        if($ShowWarnings -and $null -ne $responseData.'@adminapi.warnings')
+                        {
+                            foreach($warning in $responseData.'@adminapi.warnings')
+                            {
+                                Write-Warning $warning
+                            }
+                        }
+                        $resultsRetrieved+=$responseData.value.Count
+                        if($RemoveOdataProperties)
+                        {
+                            $responseData.value | RemoveExoOdataProperties
+                        }
+                        else {
+                            $responseData.value
+                        }
+                        $pageUri = $responseData.'@odata.nextLink'
                     }
                 }
-                $response = Invoke-WebRequest @splat
-                #we may process the headers in the future to see rate limit remaining, etc.
-                $responseHeaders = $response.Headers
-
-                $responseData = $response.Content | ConvertFrom-Json
-                
-                if($ShowWarnings)
+                else
                 {
-                    foreach($warning in $responseData.'@adminapi.warnings')
+                    #request failed
+                    $ex = $null
+                    if($response.StatusCode -ne [System.Net.HttpStatusCode]::TooManyRequests)
                     {
-                        Write-Warning $warning
-                    }
-                }
-                $resultsRetrieved+=$responseData.value.Count
-                if($RemoveOdataProperties)
-                {
-                    $responseData.value | RemoveExoOdataProperties
-                }
-                else {
-                    $responseData.value
-                }
-                $pageUri = $responseData.'@odata.nextLink'
-            }
-            catch  {
-                $ex = $_.exception
-                $responseHeaders = $ex.Response.Headers
-                if(($PSVersionTable.psEdition -eq 'Desktop' -and $ex -is [System.Net.WebException]) -or ($PSVersionTable.psEdition -eq 'Core' -and $ex -is [Microsoft.PowerShell.Commands.HttpResponseException]))
-                {
-                    $exoException = $_ | Get-ExoException
-
-                    if($ex.response.statusCode -ne 429 -or $retries -ge $MaxRetries)
-                    {
-                        #different error or max retries exceeded
                         $shouldContinue = $false
-                        if($null -ne $exoException)
+                        $ex = $responseData | Get-ExoException -httpCode $response.StatusCode
+                    }
+                    else
+                    {
+                        if($retries -ge $MaxRetries)
                         {
-                            throw $exoException
-                        }
-                        else
-                        {
-                            throw
+                            $shouldContinue = $false
+                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', '', 'Max retry count for throttled request exceeded')
                         }
                     }
+                    if($null -ne $ex)
+                    {
+                        switch($ErrorActionPreference)
+                        {
+                            'Stop' { throw $ex }
+                            'Continue' { Write-Error -Exception $ex; return }
+                            default { return }
+                        }
+                    }
+                    #TooManyRequests --> let's wait and retry
+                    $retries++
+                    switch($WarningPreference)
+                    {
+                        'Continue' { Write-Warning "Retry #$retries" }
+                        'SilentlyContinue' { Write-Verbose "Retry #$retries" }
+                    }
+
+                    #wait some time
+                    Start-Sleep -Seconds $retries
                 }
-                else
-                {
-                    #different exception type
-                    $shouldContinue = $false
-                    throw
-                }
-                $retries++
-                if($ShowWarnings)
-                {
-                    Write-Warning "Retry #$retries"
-                }
-                else
-                {
-                    Write-Verbose "Retry #$retries"
-                }
-                #wait some time
-                Start-Sleep -Seconds $retries
             }
             finally
             {
                 if($ShowRateLimits)
                 {
-                    if($null -ne $responseHeaders -and $null -ne $responseHeaders['Rate-Limit-Remaining'] -and $null -ne $responseHeaders['Rate-Limit-Reset'])
+                    $val = $null
+                    if($response.Headers.TryGetValues('Rate-Limit-Remaining', [ref]$val)) 
                     {
-                        if($PSVersionTable.psEdition -eq 'Desktop')
+                        $rateLimitRemaining = $val
+                        if($response.Headers.TryGetValues('Rate-Limit-Reset', [ref]$val))
                         {
-                            Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'])"
-                        }
-                        else
-                        {
-                            #Core
-                            Write-Verbose "Rate limit remaining: $($responseHeaders['Rate-Limit-Remaining'][0])`tRate limit reset: $($responseHeaders['Rate-Limit-Reset'][0])"
+                            $rateLimitReset = $val
+                            Write-Verbose "Rate limit remaining: $rateLimitRemaining`tRate limit reset: $rateLimitReset"
                         }
                     }
                 }
             }
         }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize -and $shouldContinue)
     }
-    end
-    {
-        #restore progress preference
-        $progressPreference = $pref
-    }
 }
-
-#endregion Public functions
-
-#region Private functions
-#removes odata type descriptor properties from the object
-function RemoveExoOdataProperties
+function New-ExoConnection
 {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [PSCustomObject]
-        $Object
-    )
-    begin
-    {
-        $propsToRemove = $null
-    }
-    process
-    {
-        if($null -eq $propsToRemove)
-        {
-            $propsToRemove = $Object.PSObject.Properties | Where-Object { $_.Name.IndexOf('@') -ge 0 }
-        }
-        foreach($prop in $propsToRemove)
-        {
-            $Object.PSObject.Properties.Remove($prop.Name)
-        }
-        $Object
-    }
-}
+<#
+.SYNOPSIS
+    Initializes EXO connection
 
-#parses Exo REST Api error response into ExoException object. if possible
-function Get-ExoException
-{
-    param
+.DESCRIPTION
+    Initializes EXO connection
+
+.OUTPUTS
+    None
+
+.EXAMPLE
+New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive
+New-ExoConnection -authenticationfactory $factory
+
+Description
+-----------
+This command initializes connection to EXO REST API.
+It uses instance of AADAuthenticationFactory for authentication with EXO REST API
+
+.EXAMPLE
+New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive | New-ExoConnection -IPPS
+
+Description
+-----------
+This command initializes connection to IPPS REST API.
+It uses instance of AADAuthenticationFactory for authentication with IPPS REST API passed via pipeline
+
+
+#>
+param
     (
         [Parameter(Mandatory, ValueFromPipeline)]
-        [System.Management.Automation.ErrorRecord]
-        $ErrorRecord
+        #AAD authentication factory created via New-AadAuthenticationFactory
+        #for user context, user factory created with clientId = fb78d390-0c51-40cd-8e17-fdbfab77341b (clientId of ExchangeOnlineManagement module) or your app with appropriate scopes assigned
+        $AuthenticationFactory,
+        
+        [Parameter()]
+        #Tenant ID when not the same as specified for factory - tenant native domain (xxx.onmicrosoft.com, or tenant GUID)
+        [string]
+        $TenantId,
+        
+        [Parameter()]
+        #UPN of anchor mailbox
+        #Default: UPN of caller or static system mailbox  (for app-only context)
+        [string]
+        $AnchorMailbox,
+
+        [switch]
+        #Connection is specialized to call IPPS commands
+        #If not present, connection is specialized to call Exchange Online commands
+        $IPPS
     )
 
     process
     {
-        try
+        $Connection = [PSCustomObject]@{
+            PSTypeName = "ExoHelper.Connection"
+            AuthenticationFactory = $AuthenticationFactory
+            ConnectionId = [Guid]::NewGuid().ToString()
+            TenantId = $null
+            AnchorMailbox = $null
+            ConnectionUri = $null
+            IsIPPS = $IPPS.IsPresent
+            HttpClient = new-object System.Net.Http.HttpClient
+        }
+        $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
+        $Connection.TenantId = $claims.tid
+        if($IPPS)
         {
-            $ex = $ErrorRecord.exception
-            
-            if($null -ne $ErrorRecord.ErrorDetails.Message)
+            $Connection.ConnectionUri = "https://eur01b.ps.compliance.protection.outlook.com/AdminApi/beta/$($Connection.TenantId)/InvokeCommand"
+        }
+        else
+        {
+            $Connection.ConnectionUri = "https://outlook.office365.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
+        }
+
+        if([string]::IsNullOrEmpty($AnchorMailbox))
+        {
+            if($null -ne $claims.upn)
             {
-                $details = ($ErrorRecord.errordetails.message | ConvertFrom-Json).error
-                if($null -ne $details.details.message)
-                {
-                    $errorData = $details.details.message.split('|')
-                }
-                else
-                {   if($null -ne $details.message)
-                    {
-                        $errorData = $details.message.split('|')
-                    }
-                }
-                if($errorData.count -eq 3)
-                {
-                    new-object ExoException -ArgumentList @($ex.Response.StatusCode, $errorData[0], $errorData[1], $errorData[2], $ex)
-                }
-                else
-                {
-                    new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', $details.code, $details.message, $ex)
-                }
+                #using caller's mailbox
+                $Connection.AnchorMailbox = "UPN:$($claims.upn)"
             }
             else
             {
-                $details = ($ErrorRecord.errordetails | ConvertFrom-Json).error
-                if($null -ne $details.innerError.internalexception)
-                {
-                    if($null -ne $details.innerError.internalexception.message)
-                    {
-                        new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', 'RequestProcessingError', $details.innerError.internalexception.message, $ex)
-                    }
-                    else
-                    {
-                        new-object ExoException -ArgumentList @($ex.Response.StatusCode, 'ExoGeneralError', 'RequestProcessingError', $details.innerError.internalexception, $ex)
-                    }
-                }
+                #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
+                $Connection.AnchorMailbox = "DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
             }
         }
-        catch
+        else
         {
-            #do nothing
+            $Connection.AnchorMailbox = "UPN:$AnchorMailbox"
         }
-        # does not return anything if not in the expected format
+
+        $script:ConnectionContext = $Connection
+        $script:ConnectionContext
     }
 }
-
+#endregion Public commands
+#region Internal commands
 #encrypts data using MS provided public key
 #key stored in module private data
 #MS rotates the key regularly; at least one version back is supported
@@ -542,13 +430,97 @@ function EncryptValue
         return $UnsecureString;
     }
 }
+function Get-ExoException
+{
+    param
+    (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]
+        $ErrorRecord,
+        [Parameter()]
+        $httpCode
+    )
 
+    process
+    {
+        if($null -ne $errorRecord.error.details.message)
+        {
+            $message = $errorRecord.error.details.message
+            $errorData = $message.split('|')
+            if($errorData.count -eq 3)
+            {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, $errorData[0], $errorData[1], $errorData[2])
+            }
+            else
+            {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithUnknownDetail', '', $message)
+            }
+        }
+        if($null -ne $errorRecord.error)
+        {
+            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithMissingDetail', '', "$($errorRecord.error)")
+        }
+        return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoUnknownError', '', "$($errorRecord.error)")
+    }
+}
+function GetRequestMessage
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory)]
+        [string]
+        $Uri,
+        [Parameter()]
+        [hashtable]
+        $Headers,
+        [Parameter()]
+        [string]
+        $Body
+    )
+    begin
+    {
+        $ContentType = 'application/json'
+        $Method = [System.Net.Http.HttpMethod]::Post
+    }
+    process
+    {
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::$Method, (new-object System.Uri($Uri)))
+        if($null -ne $Headers)
+        {
+            foreach($header in $Headers.Keys)
+            {
+                $request.Headers.TryAddWithoutValidation($header, $Headers[$header]) | Out-Null
+            }
+        }
+        if($null -ne $Body)
+        {
+            $request.Content = [System.Net.Http.StringContent]::new($Body, [System.Text.Encoding]::UTF8, $ContentType)
+        }
+        $request.Method = $Method
+        $request
+    }
+}
 Function Init
 {
     param()
 
     process
     {
+        #Add JIT compiled helpers. Load only if not loaded previously
+        $referencedAssemblies=@()
+        $helpers = 'ExoException', 'StringExtensions'
+        foreach($helper in $helpers)
+        {
+            #compiled helpers are in ExoHelper namespace
+            if($null -eq ("ExoHelper.$helper" -as [type]))
+            {
+                $helperDefinition = Get-Content "$PSScriptRoot\Helpers\$helper.cs" -Raw
+                Add-Type -TypeDefinition $helperDefinition -ReferencedAssemblies $referencedAssemblies -WarningAction SilentlyContinue -IgnoreWarnings
+            }
+        }
+        
+        #refresh cached public key, if needed
         $PublicKeyConfig = $MyInvocation.MyCommand.Module.PrivateData.Configuration.ExoPublicKey
         $cacheFile = [System.IO.Path]::Combine($env:TEMP, $PublicKeyConfig.LocalFile)
         $needsRefresh = $false
@@ -581,46 +553,33 @@ Function Init
         $script:PublicKey = [System.IO.File]::ReadAllText($cacheFile)
     }
 }
-
-#endregion Private functions
-#region Compiled helpers
-Add-Type -TypeDefinition @'
-    using System;
-    using System.Net;
-    namespace ExoHelper
+#removes odata type descriptor properties from the object
+function RemoveExoOdataProperties
+{
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSCustomObject]
+        $Object
+    )
+    begin
     {
-        public static class ExoHelperStringExtensions
-        {
-            //converts Exo size string to long
-            public static long FromExoSize(this string input)
-            {
-                var start = input.IndexOf('(');
-                var end = input.IndexOf(' ', start);
-                long output = -1;
-                long.TryParse(input.Substring(start + 1, end - start - 1).Replace(",", string.Empty), out output);
-                return output;
-            }
-        }
-
-        //exception class for ExoHelper module
-        public class ExoException : Exception
-        {
-            public HttpStatusCode? StatusCode { get; set; }
-            public string ExoErrorCode { get; set; }
-            public string ExoErrorType { get; set; }
-            public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message):this(statusCode, exoCode, exoErrorType, message, null)
-            {
-            }
-            public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message, Exception innerException):base(message, innerException)
-            {
-                StatusCode = statusCode;
-                ExoErrorCode = exoCode;
-                ExoErrorType = exoErrorType;
-            }
-        }
+        $propsToRemove = $null
     }
-'@
-
-#endregion Compiled helpers
-
+    process
+    {
+        if($null -eq $propsToRemove)
+        {
+            $propsToRemove = $Object.PSObject.Properties | Where-Object { $_.Name.IndexOf('@') -ge 0 }
+        }
+        foreach($prop in $propsToRemove)
+        {
+            $Object.PSObject.Properties.Remove($prop.Name)
+        }
+        $Object
+    }
+}
+#endregion Internal commands
+#region Module initialization
 Init
+#endregion Module initialization

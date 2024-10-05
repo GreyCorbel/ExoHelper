@@ -19,6 +19,8 @@ jobs:
   publishToGallery:
     # The type of runner that the job will run on
     runs-on: windows-latest
+    env: 
+      MODULE_NAME: ExoHelper
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
@@ -29,10 +31,10 @@ jobs:
     - name: Build
       shell: pwsh
       run: |
+        $moduleName = $env:MODULE_NAME
         Copy-Item -Path "$env:GITHUB_WORKSPACE\LICENSE" -Destination "$env:GITHUB_WORKSPACE\Module\ExoHelper\LICENSE.txt" -Force
-        Write-Host ${{github.event_name}}
-        Write-Host ${{github.event.inputs.publish}}
-        Write-Host ${{ (github.event_name != 'workflow_dispatch') || github.event.inputs.publish }}
+        "Building module"
+        &"$env:GITHUB_WORKSPACE\Workflow\BuildModule.ps1" -RootPath "$env:GITHUB_WORKSPACE" -ModuleName $moduleName
 
     - name: Install prerequisites
       shell: pwsh

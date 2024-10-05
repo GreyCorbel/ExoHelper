@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Configuration>
+    <ViewDefinitions>
+        <View>
+        <Name>ExoHelperConnection</Name>
+        <ViewSelectedBy>
+            <TypeName>ExoHelper.Connection</TypeName>
+        </ViewSelectedBy>
+        <TableControl>
+            <TableRowEntries>
+            <TableRowEntry>
+                <TableColumnItems>
+                    <TableColumnItem>
+                        <PropertyName>TenantId</PropertyName>
+                    </TableColumnItem>
+                    <TableColumnItem>
+                        <PropertyName>AnchorMailbox</PropertyName>
+                    </TableColumnItem>
+                    <TableColumnItem>
+                        <PropertyName>IsIPPS</PropertyName>
+                    </TableColumnItem>
+                     <TableColumnItem>
+                        <PropertyName>ConnectionUri</PropertyName>
+                    </TableColumnItem>
+               </TableColumnItems>
+            </TableRowEntry>
+            </TableRowEntries>
+        </TableControl>
+        </View>
+    </ViewDefinitions>
+</Configuration>
