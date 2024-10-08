@@ -273,6 +273,11 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     Start-Sleep -Seconds $retries
                 }
             }
+            catch
+            {
+                $shouldContinue = $false
+                throw
+            }
             finally
             {
                 if($ShowRateLimits)
@@ -289,7 +294,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                 }
             }
-        }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize -and $shouldContinue)
+        }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
     }
 }
 function New-ExoConnection
@@ -363,7 +368,7 @@ param
         $Connection.TenantId = $claims.tid
         if($IPPS)
         {
-            $Connection.ConnectionUri = "https://eur01b.ps.compliance.protection.outlook.com/AdminApi/beta/$($Connection.TenantId)/InvokeCommand"
+            $Connection.ConnectionUri = "https://eur02b.ps.compliance.protection.outlook.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
         }
         else
         {

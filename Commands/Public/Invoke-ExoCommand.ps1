@@ -213,6 +213,11 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     Start-Sleep -Seconds $retries
                 }
             }
+            catch
+            {
+                $shouldContinue = $false
+                throw
+            }
             finally
             {
                 if($ShowRateLimits)
@@ -229,6 +234,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                 }
             }
-        }while($null -ne $pageUri -and $resultsRetrieved -lt $ResultSize -and $shouldContinue)
+        }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
     }
 }

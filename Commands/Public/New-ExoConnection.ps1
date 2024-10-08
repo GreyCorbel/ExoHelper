@@ -69,7 +69,7 @@ param
         $Connection.TenantId = $claims.tid
         if($IPPS)
         {
-            $Connection.ConnectionUri = "https://eur01b.ps.compliance.protection.outlook.com/AdminApi/beta/$($Connection.TenantId)/InvokeCommand"
+            $Connection.ConnectionUri = "https://eur02b.ps.compliance.protection.outlook.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
         }
         else
         {
