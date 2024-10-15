@@ -500,7 +500,10 @@ function GetRequestMessage
         }
         if($null -ne $Body)
         {
-            $request.Content = [System.Net.Http.StringContent]::new($Body, [System.Text.Encoding]::UTF8, $ContentType)
+            $payload = ([System.Text.Encoding]::UTF8.GetBytes($Body));
+            $request.Content = [System.Net.Http.ByteArrayContent]::new($payload)
+            $request.Content.headers.Add('Content-Encoding','utf-8')
+            $request.Content.headers.Add('Content-Type','application/json')
         }
         $request.Method = $Method
         $request
