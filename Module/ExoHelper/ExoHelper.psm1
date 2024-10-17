@@ -364,8 +364,19 @@ param
             IsIPPS = $IPPS.IsPresent
             HttpClient = new-object System.Net.Http.HttpClient
         }
-        $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
-        $Connection.TenantId = $claims.tid
+        
+        #explicitly authenticate when establishing connection to catch any authentication problems early
+        Get-ExoToken -Connection $Connection | Out-Null
+        if([string]::IsNullOrEmpty($TenantId))
+        {
+            $TenantId = $AuthenticationFactory.TenantId
+        }
+        if([string]::IsNullOrEmpty($TenantId))
+        {
+            throw (new-object ExoHelper.ExoException([System.Net.HttpStatusCode]::BadRequest, 'ExoMissingTenantId', 'ExoInitializationError', 'TenantId is not specified and cannot be determined automatically - please specify TenantId parameter'))
+        }
+        $Connection.TenantId = $TenantId
+        
         if($IPPS)
         {
             $Connection.ConnectionUri = "https://eur02b.ps.compliance.protection.outlook.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
@@ -385,7 +396,7 @@ param
             else
             {
                 #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
-                $Connection.AnchorMailbox = "DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
+                $Connection.AnchorMailbox = "UPN:DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
             }
         }
         else
