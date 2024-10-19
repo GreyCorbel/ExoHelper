@@ -3,7 +3,7 @@ function Get-ExoException
     param
     (
         [Parameter(Mandatory, ValueFromPipeline)]
-        [PSCustomObject]
+        [object]
         $ErrorRecord,
         [Parameter()]
         $httpCode
@@ -11,6 +11,11 @@ function Get-ExoException
 
     process
     {
+        if($ErrorRecord -is [string])
+        {
+            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+        }
+        #structured error
         if($null -ne $errorRecord.error.details.message)
         {
             $message = $errorRecord.error.details.message

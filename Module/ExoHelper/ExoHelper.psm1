@@ -198,7 +198,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 $headers['client-request-id'] = [Guid]::NewGuid().ToString()
                 #provide up to date token for each request of commands returning paged results that may take long to complete
                 $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
-                Write-Verbose "$([DateTime]::UtcNow.ToString('o'))`tResults:$resultsRetrieved`tRequestId: $($headers['client-request-id'])`tUri: $pageUri"
                 $requestMessage = GetRequestMessage -Uri $pageUri -Headers $headers -Body ($body | ConvertTo-Json -Depth 9)
                 $response = $Connection.HttpClient.SendAsync($requestMessage).GetAwaiter().GetResult()
                 $requestMessage.Dispose()
@@ -206,7 +205,21 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 if($null -ne $response.Content -and $response.StatusCode -ne [System.Net.HttpStatusCode]::NoContent)
                 {
                     $payload = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-                    $responseData = $Payload | ConvertFrom-Json
+                    if($response.content.Headers.ContentType.MediaType -eq 'application/json')
+                    {
+                        try {
+                            $responseData = $Payload | ConvertFrom-Json
+                        }
+                        catch {
+                            Write-Warning "Received unexpected non-JSON response: $payload"
+                            $responseData = $payload
+                        }
+                    }
+                    else
+                    {
+                        Write-Warning "Received non-JSON response: $($response.content.Headers.ContentType.MediaType)"
+                        $responseData = $payload
+                    }
                 }
                 else
                 {
@@ -216,23 +229,33 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 {
                     if($null -ne $responseData)
                     {
-
-                        if($ShowWarnings -and $null -ne $responseData.'@adminapi.warnings')
+                        if($responseData -is [string])
                         {
-                            foreach($warning in $responseData.'@adminapi.warnings')
+                            #we did not receive JSON response - return it and finish
+                            $shouldContinue = $false
+                            $responseData
+                        }
+                        else
+                        {
+                            #we have parsed json response
+                            if($ShowWarnings -and $null -ne $responseData.'@adminapi.warnings')
                             {
-                                Write-Warning $warning
+                                foreach($warning in $responseData.'@adminapi.warnings')
+                                {
+                                    Write-Warning $warning
+                                }
                             }
+                            $resultsRetrieved+=$responseData.value.Count
+                            if($RemoveOdataProperties)
+                            {
+                                $responseData.value | RemoveExoOdataProperties
+                            }
+                            else {
+                                $responseData.value
+                            }
+                            Write-Verbose "$([DateTime]::UtcNow.ToString('o'))`tResults:$resultsRetrieved`tRequestId: $($headers['client-request-id'])`tUri: $pageUri"
+                            $pageUri = $responseData.'@odata.nextLink'
                         }
-                        $resultsRetrieved+=$responseData.value.Count
-                        if($RemoveOdataProperties)
-                        {
-                            $responseData.value | RemoveExoOdataProperties
-                        }
-                        else {
-                            $responseData.value
-                        }
-                        $pageUri = $responseData.'@odata.nextLink'
                     }
                 }
                 else
@@ -451,7 +474,7 @@ function Get-ExoException
     param
     (
         [Parameter(Mandatory, ValueFromPipeline)]
-        [PSCustomObject]
+        [object]
         $ErrorRecord,
         [Parameter()]
         $httpCode
@@ -459,6 +482,11 @@ function Get-ExoException
 
     process
     {
+        if($ErrorRecord -is [string])
+        {
+            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+        }
+        #structured error
         if($null -ne $errorRecord.error.details.message)
         {
             $message = $errorRecord.error.details.message
