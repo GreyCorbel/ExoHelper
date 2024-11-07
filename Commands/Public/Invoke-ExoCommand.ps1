@@ -258,10 +258,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             }
             finally
             {
-                if($null -ne $cts)
-                {
-                    $cts.Dispose()
-                }
                 if($ShowRateLimits)
                 {
                     $val = $null
@@ -277,5 +273,12 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 }
             }
         }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
+    }
+    end
+    {
+        if($null -ne $cts)
+        {
+            $cts.Dispose()
+        }
     }
 }

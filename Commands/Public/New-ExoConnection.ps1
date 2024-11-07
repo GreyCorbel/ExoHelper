@@ -48,9 +48,9 @@ param
         $AnchorMailbox,
 
         [Parameter()]
-        [System.Nullable[timespan]]
+        [timespan]
             #Default timeout for the EXO command execution
-        $DefaultTimeout,
+        $DefaultTimeout = [timespan]::FromMinutes(60),
 
         [switch]
         #Connection is specialized to call IPPS commands
@@ -71,7 +71,7 @@ param
             HttpClient = new-object System.Net.Http.HttpClient
         }
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
-        $Connection.HttpClient.Timeout = [timespan]::FromMinutes(60)
+        $Connection.HttpClient.Timeout = $DefaultTimeout
 
         #explicitly authenticate when establishing connection to catch any authentication problems early
         Get-ExoToken -Connection $Connection | Out-Null

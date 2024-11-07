@@ -318,10 +318,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             }
             finally
             {
-                if($null -ne $cts)
-                {
-                    $cts.Dispose()
-                }
                 if($ShowRateLimits)
                 {
                     $val = $null
@@ -337,6 +333,13 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 }
             }
         }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
+    }
+    end
+    {
+        if($null -ne $cts)
+        {
+            $cts.Dispose()
+        }
     }
 }
 function New-ExoConnection
@@ -388,6 +391,11 @@ param
         [string]
         $AnchorMailbox,
 
+        [Parameter()]
+        [timespan]
+            #Default timeout for the EXO command execution
+        $DefaultTimeout = [timespan]::FromMinutes(60),
+
         [switch]
         #Connection is specialized to call IPPS commands
         #If not present, connection is specialized to call Exchange Online commands
@@ -407,7 +415,7 @@ param
             HttpClient = new-object System.Net.Http.HttpClient
         }
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
-        $Connection.HttpClient.Timeout = [timespan]::FromMinutes(60)
+        $Connection.HttpClient.Timeout = $DefaultTimeout
 
         #explicitly authenticate when establishing connection to catch any authentication problems early
         Get-ExoToken -Connection $Connection | Out-Null
