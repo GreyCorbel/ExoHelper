@@ -47,6 +47,11 @@ param
         [string]
         $AnchorMailbox,
 
+        [Parameter()]
+        [System.Nullable[timespan]]
+            #Default timeout for the EXO command execution
+        $DefaultTimeout,
+
         [switch]
         #Connection is specialized to call IPPS commands
         #If not present, connection is specialized to call Exchange Online commands
@@ -65,7 +70,9 @@ param
             IsIPPS = $IPPS.IsPresent
             HttpClient = new-object System.Net.Http.HttpClient
         }
-        
+        $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
+        $Connection.HttpClient.Timeout = [timespan]::FromMinutes(60)
+
         #explicitly authenticate when establishing connection to catch any authentication problems early
         Get-ExoToken -Connection $Connection | Out-Null
         if([string]::IsNullOrEmpty($TenantId))

@@ -120,6 +120,13 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             #Default is 100
         $PageSize = 100,
 
+        [Parameter()]
+        [System.Nullable[timespan]]
+            #Timeout for the command execution
+            #Default is timeout of the connection
+            #If specified, must be lower than connection timeout
+        $Timeout,
+
         [switch]
             #If we want to write any warnings returned by EXO REST API
         $ShowWarnings,
@@ -140,6 +147,14 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
 
     begin
     {
+        if($null -ne $Timeout)
+        {
+            $cts = new-object System.Threading.CancellationTokenSource($Timeout)
+        }
+        else {
+            $cts = new-object System.Threading.CancellationTokenSource($Connection.HttpClient.Timeout)
+        }
+
         $body = @{}
         if($PageSize -gt 1000)
         {
@@ -199,7 +214,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 #provide up to date token for each request of commands returning paged results that may take long to complete
                 $headers['Authorization'] = (Get-ExoToken -Connection $Connection).CreateAuthorizationHeader()
                 $requestMessage = GetRequestMessage -Uri $pageUri -Headers $headers -Body ($body | ConvertTo-Json -Depth 9)
-                $response = $Connection.HttpClient.SendAsync($requestMessage).GetAwaiter().GetResult()
+                $response = $Connection.HttpClient.SendAsync($requestMessage, $cts.Token).GetAwaiter().GetResult()
                 $requestMessage.Dispose()
 
                 if($null -ne $response.Content -and $response.StatusCode -ne [System.Net.HttpStatusCode]::NoContent)
@@ -303,6 +318,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             }
             finally
             {
+                if($null -ne $cts)
+                {
+                    $cts.Dispose()
+                }
                 if($ShowRateLimits)
                 {
                     $val = $null
@@ -387,7 +406,9 @@ param
             IsIPPS = $IPPS.IsPresent
             HttpClient = new-object System.Net.Http.HttpClient
         }
-        
+        $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
+        $Connection.HttpClient.Timeout = [timespan]::FromMinutes(60)
+
         #explicitly authenticate when establishing connection to catch any authentication problems early
         Get-ExoToken -Connection $Connection | Out-Null
         if([string]::IsNullOrEmpty($TenantId))
