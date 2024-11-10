@@ -11,7 +11,7 @@ function New-ExoConnection
     None
 
 .EXAMPLE
-New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive
+$factory = New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode WAM
 New-ExoConnection -authenticationfactory $factory
 
 Description
@@ -37,7 +37,8 @@ param
         $AuthenticationFactory,
         
         [Parameter()]
-        #Tenant ID when not the same as specified for factory - tenant native domain (xxx.onmicrosoft.com, or tenant GUID)
+        #Tenant ID when not the same as specified for factory
+        #Must be tenant native domain (xxx.onmicrosoft.com)
         [string]
         $TenantId,
         
@@ -51,6 +52,11 @@ param
         [timespan]
             #Default timeout for the EXO command execution
         $DefaultTimeout = [timespan]::FromMinutes(60),
+
+        [Parameter()]
+        [int]
+            #Default retry count for the EXO command execution
+        $DefaultRetryCount = 10,
 
         [switch]
         #Connection is specialized to call IPPS commands
@@ -69,6 +75,7 @@ param
             ConnectionUri = $null
             IsIPPS = $IPPS.IsPresent
             HttpClient = new-object System.Net.Http.HttpClient
+            DefaultRetryCount = $DefaultRetryCount
         }
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
         $Connection.HttpClient.Timeout = $DefaultTimeout

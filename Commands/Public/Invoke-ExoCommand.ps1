@@ -46,7 +46,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         [Parameter()]
         [int]
             #Max retries when throttling occurs
-        $MaxRetries = 10,
+            #Default: DefaultRetryCount on EXO connection
+        $MaxRetries = -1,
 
         [Parameter()]
         [int]
@@ -64,7 +65,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         [System.Nullable[timespan]]
             #Timeout for the command execution
             #Default is timeout of the connection
-            #If specified, must be lower than connection timeout
+            #If specified, must be lower than default connection timeout
+            #See also https://makolyte.com/csharp-how-to-change-the-httpclient-timeout-per-request/ for more details on timeouts of http client
         $Timeout,
 
         [switch]
@@ -76,7 +78,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $RemoveOdataProperties,
 
         [switch]
-        #If we want to include rate limits reported by REST API to verbose output
+            # If we want to include rate limits reported by REST API to verbose output
+            # Requires verbose output to be enabled
         $ShowRateLimits,
 
         [Parameter()]
@@ -111,6 +114,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         {
             $props = $PropertiesToLoad -join ','
             $uri = "$uri`?`$select=$props"
+        }
+        if($MaxRetries -eq -1)
+        {
+            $MaxRetries = $Connection.DefaultRetryCount
         }
     }
 

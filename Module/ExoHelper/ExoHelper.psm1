@@ -106,7 +106,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         [Parameter()]
         [int]
             #Max retries when throttling occurs
-        $MaxRetries = 10,
+            #Default: DefaultRetryCount on EXO connection
+        $MaxRetries = -1,
 
         [Parameter()]
         [int]
@@ -124,7 +125,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         [System.Nullable[timespan]]
             #Timeout for the command execution
             #Default is timeout of the connection
-            #If specified, must be lower than connection timeout
+            #If specified, must be lower than default connection timeout
+            #See also https://makolyte.com/csharp-how-to-change-the-httpclient-timeout-per-request/ for more details on timeouts of http client
         $Timeout,
 
         [switch]
@@ -171,6 +173,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         {
             $props = $PropertiesToLoad -join ','
             $uri = "$uri`?`$select=$props"
+        }
+        if($MaxRetries -eq -1)
+        {
+            $MaxRetries = $Connection.DefaultRetryCount
         }
     }
 
@@ -355,7 +361,7 @@ function New-ExoConnection
     None
 
 .EXAMPLE
-New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode Interactive
+$factory = New-AadAuthenticationFactory -ClientId (Get-ExoDefaultClientId) -TenantId 'mydomain.onmicrosoft.com' -AuthMode WAM
 New-ExoConnection -authenticationfactory $factory
 
 Description
@@ -381,7 +387,8 @@ param
         $AuthenticationFactory,
         
         [Parameter()]
-        #Tenant ID when not the same as specified for factory - tenant native domain (xxx.onmicrosoft.com, or tenant GUID)
+        #Tenant ID when not the same as specified for factory
+        #Must be tenant native domain (xxx.onmicrosoft.com)
         [string]
         $TenantId,
         
@@ -395,6 +402,11 @@ param
         [timespan]
             #Default timeout for the EXO command execution
         $DefaultTimeout = [timespan]::FromMinutes(60),
+
+        [Parameter()]
+        [int]
+            #Default retry count for the EXO command execution
+        $DefaultRetryCount = 10,
 
         [switch]
         #Connection is specialized to call IPPS commands
@@ -413,6 +425,7 @@ param
             ConnectionUri = $null
             IsIPPS = $IPPS.IsPresent
             HttpClient = new-object System.Net.Http.HttpClient
+            DefaultRetryCount = $DefaultRetryCount
         }
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
         $Connection.HttpClient.Timeout = $DefaultTimeout
