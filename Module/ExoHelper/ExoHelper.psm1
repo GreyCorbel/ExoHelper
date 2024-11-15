@@ -138,7 +138,8 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         $RemoveOdataProperties,
 
         [switch]
-        #If we want to include rate limits reported by REST API to verbose output
+            # If we want to include rate limits reported by REST API to verbose output
+            # Requires verbose output to be enabled
         $ShowRateLimits,
 
         [Parameter()]
@@ -298,6 +299,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     if($null -ne $ex)
                     {
+                        Write-Verbose "Handling exception: StatusCode $($ex.StatusCode)`tExoErrorCode: $($ex.ExoErrorCode)`tExoErrorType: $($ex.ExoErrorType)"
                         switch($ErrorActionPreference)
                         {
                             'Stop' { throw $ex }

@@ -239,6 +239,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     if($null -ne $ex)
                     {
+                        Write-Verbose "Handling exception: StatusCode $($ex.StatusCode)`tExoErrorCode: $($ex.ExoErrorCode)`tExoErrorType: $($ex.ExoErrorType)"
                         switch($ErrorActionPreference)
                         {
                             'Stop' { throw $ex }
