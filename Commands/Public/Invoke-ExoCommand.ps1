@@ -179,7 +179,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     else
                     {
-                        Write-Warning "Received non-JSON response: $($response.content.Headers.ContentType.MediaType)"
+                        Write-Warning "Received non-JSON response with http status $($response.StatusCode): $($response.content.Headers.ContentType.MediaType)"
                         $responseData = $payload
                     }
                 }
@@ -239,7 +239,6 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     if($null -ne $ex)
                     {
-                        Write-Verbose "Handling exception: StatusCode $($ex.StatusCode)`tExoErrorCode: $($ex.ExoErrorCode)`tExoErrorType: $($ex.ExoErrorType)"
                         switch($ErrorActionPreference)
                         {
                             'Stop' { throw $ex }
