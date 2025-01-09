@@ -69,6 +69,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             #See also https://makolyte.com/csharp-how-to-change-the-httpclient-timeout-per-request/ for more details on timeouts of http client
         $Timeout,
 
+        [Parameter()]
+            #Status codes that are considered retryable
+        [System.Net.HttpStatusCode[]]$RetryableStatusCodes = @([System.Net.HttpStatusCode]::TooManyRequests),
+            
         [switch]
             #If we want to write any warnings returned by EXO REST API
         $ShowWarnings,
@@ -173,7 +177,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                             $responseData = $Payload | ConvertFrom-Json
                         }
                         catch {
-                            Write-Warning "Received unexpected non-JSON response: $payload"
+                            Write-Warning "Received unexpected non-JSON response with http staus $($response.StatusCode): $payload"
                             $responseData = $payload
                         }
                     }
@@ -224,17 +228,18 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 {
                     #request failed
                     $ex = $null
-                    if($response.StatusCode -ne [System.Net.HttpStatusCode]::TooManyRequests)
+                    if($response.StatusCode -notin $RetryableStatusCodes -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*')
                     {
                         $shouldContinue = $false
                         $ex = $responseData | Get-ExoException -httpCode $response.StatusCode
                     }
                     else
                     {
+                        #we wait on http 429 or throttling message
                         if($retries -ge $MaxRetries)
                         {
                             $shouldContinue = $false
-                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', '', 'Max retry count for throttled request exceeded')
+                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRetries', '', 'Max retry count for throttled request exceeded')
                         }
                     }
                     if($null -ne $ex)
@@ -247,15 +252,29 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         }
                     }
                     #TooManyRequests --> let's wait and retry
+                    $headers = @{}
+                    $response.Headers | ForEach-Object { $headers[$_.Key] = $_.Value }
+                    $headersObject = [PSCustomObject]$headers
+
                     $retries++
                     switch($WarningPreference)
                     {
-                        'Continue' { Write-Warning "Retry #$retries" }
-                        'SilentlyContinue' { Write-Verbose "Retry #$retries" }
+                        'Continue' { 
+                            Write-Warning "Retry #$retries"
+                            $headersObject | Out-String | Write-Warning
+                            break;
+                        }
+                        'SilentlyContinue' {
+                            Write-Verbose "Retry #$retries"
+                            $headersObject | Out-String | Write-Verbose
+                            break;
+                        }
                     }
 
                     #wait some time
-                    Start-Sleep -Seconds $retries
+                    $val = $retries
+                    #if($response.Headers.TryGetValues('Retry-After', [ref]$val))
+                    Start-Sleep -Seconds ($retries * 5)
                 }
             }
             catch

@@ -10,6 +10,7 @@ namespace ExoHelper
         public string ExoErrorType { get; set; }
         public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message):this(statusCode, exoCode, exoErrorType, message, null)
         {
+
         }
         public ExoException(HttpStatusCode? statusCode, string exoCode, string exoErrorType, string message, Exception innerException):base(message, innerException)
         {
