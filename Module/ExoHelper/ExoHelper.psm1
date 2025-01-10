@@ -131,7 +131,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
 
         [Parameter()]
             #Status codes that are considered retryable
-        [System.Net.HttpStatusCode[]]$RetryableStatusCodes = @([System.Net.HttpStatusCode]::TooManyRequests),
+        [System.Net.HttpStatusCode[]]$RetryableStatusCodes,
             
         [switch]
             #If we want to write any warnings returned by EXO REST API
@@ -183,6 +183,15 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
         {
             $MaxRetries = $Connection.DefaultRetryCount
         }
+        if($RetryableStatusCodes.Count -eq 0)
+        {
+            $RetryableStatusCodes = @('ServiceUnavailable', 'GatewayTimeout', 'RequestTimeout')
+            if($PSVersionTable.PSEdition -eq 'Core')
+            {
+                $RetryableStatusCodes += 'TooManyRequests'
+            }
+        }
+        Write-verbose ("Retryable status codes: $($RetryableStatusCodes -join ',')")
     }
 
     process
@@ -299,7 +308,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         if($retries -ge $MaxRetries)
                         {
                             $shouldContinue = $false
-                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', '', 'Max retry count for throttled request exceeded')
+                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', '', 'Max retry count for request exceeded')
                         }
                     }
                     if($null -ne $ex)
