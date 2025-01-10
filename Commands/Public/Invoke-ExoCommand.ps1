@@ -128,6 +128,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             $RetryableStatusCodes = @('ServiceUnavailable', 'GatewayTimeout', 'RequestTimeout')
             if($PSVersionTable.PSEdition -eq 'Core')
             {
+                #this is not available in .NET Frameworl
                 $RetryableStatusCodes += 'TooManyRequests'
             }
         }
