@@ -6,14 +6,22 @@ function Get-ExoException
         [object]
         $ErrorRecord,
         [Parameter()]
-        $httpCode
+        $httpCode,
+        [Parameter()]
+        $exceptionType
     )
 
     process
     {
         if($ErrorRecord -is [string])
         {
-            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+            if([string]::IsNullOrEmpty($exceptionType))
+            {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+            }
+            else {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, $exceptionType, '', $ErrorRecord)
+            }
         }
         #structured error
         if($null -ne $errorRecord.error.details.message)
@@ -26,7 +34,7 @@ function Get-ExoException
             }
             else
             {
-                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithUnknownDetail', '', $message)
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithUnknownDetail', $exceptionType, $message)
             }
         }
         if($null -ne $errorRecord.error.innerError.internalException)
@@ -35,8 +43,8 @@ function Get-ExoException
         }
         if($null -ne $errorRecord.error)
         {
-            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithMissingDetail', '', "$($errorRecord.error)")
+            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithMissingDetail', $exceptionType, "$($errorRecord.error)")
         }
-        return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoUnknownError', '', "$($errorRecord.error)")
+        return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoUnknownError', $exceptionType, "$($errorRecord.error)")
     }
 }

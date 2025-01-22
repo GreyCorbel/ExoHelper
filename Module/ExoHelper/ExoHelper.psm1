@@ -188,10 +188,10 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             $RetryableStatusCodes = @('ServiceUnavailable', 'GatewayTimeout', 'RequestTimeout')
             if($PSVersionTable.PSEdition -eq 'Core')
             {
+                #this is not available in .NET Frameworl
                 $RetryableStatusCodes += 'TooManyRequests'
             }
         }
-        Write-verbose ("Retryable status codes: $($RetryableStatusCodes -join ',')")
     }
 
     process
@@ -297,10 +297,16 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                 {
                     #request failed
                     $ex = $null
-                    if($response.StatusCode -notin $RetryableStatusCodes -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*')
+                    $exceptionType = $null
+                    $response.Headers.TryGetValues('X-ExceptionType', [ref]$exceptionType)
+                    if($response.StatusCode -notin $RetryableStatusCodes `
+                        -and $exceptionType -notin @('UnableToWriteToAadException') `
+                        -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*' `
+                        -and $responseData -notlike '*issue may be transient*' `
+                        )
                     {
                         $shouldContinue = $false
-                        $ex = $responseData | Get-ExoException -httpCode $response.StatusCode
+                        $ex = $responseData | Get-ExoException -httpCode $response.StatusCode -exceptionType $exceptionType
                     }
                     else
                     {
@@ -308,7 +314,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         if($retries -ge $MaxRetries)
                         {
                             $shouldContinue = $false
-                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', '', 'Max retry count for request exceeded')
+                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', $exceptionType, 'Max retry count for request exceeded')
                         }
                     }
                     if($null -ne $ex)
@@ -321,29 +327,35 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         }
                     }
                     #TooManyRequests --> let's wait and retry
-                    $headers = @{}
-                    $response.Headers | ForEach-Object { $headers[$_.Key] = $_.Value }
-                    $headersObject = [PSCustomObject]$headers
+                    #$headers = @{}
+                    #$response.Headers | ForEach-Object { $headers[$_.Key] = $_.Value }
+                    #$headersObject = [PSCustomObject]$headers
 
                     $retries++
+                    $val = $null
+                    if($response.Headers.TryGetValues('Retry-After', [ref]$val))
+                    {
+                        $retryAfter = [int]($val[0])
+                    }
+                    else
+                    {
+                        $retryAfter = 3 * $retries
+                    }
+
                     switch($WarningPreference)
                     {
                         'Continue' { 
-                            Write-Warning "Retry #$retries"
-                            $headersObject | Out-String | Write-Warning
+                            Write-Warning "Retry #$retries after $retryAfter seconds"
                             break;
                         }
                         'SilentlyContinue' {
-                            Write-Verbose "Retry #$retries"
-                            $headersObject | Out-String | Write-Verbose
+                            Write-Verbose "Retry #$retries after $retryAfter seconds"
                             break;
                         }
                     }
 
                     #wait some time
-                    $val = $retries
-                    #if($response.Headers.TryGetValues('Retry-After', [ref]$val))
-                    Start-Sleep -Seconds ($retries * 5)
+                    Start-Sleep -Seconds $retryAfter
                 }
             }
             catch
@@ -366,6 +378,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         }
                     }
                 }
+                $response.Dispose()
             }
         }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
     }
@@ -548,14 +561,22 @@ function Get-ExoException
         [object]
         $ErrorRecord,
         [Parameter()]
-        $httpCode
+        $httpCode,
+        [Parameter()]
+        $exceptionType
     )
 
     process
     {
         if($ErrorRecord -is [string])
         {
-            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+            if([string]::IsNullOrEmpty($exceptionType))
+            {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithPlainText', '', $ErrorRecord)
+            }
+            else {
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, $exceptionType, '', $ErrorRecord)
+            }
         }
         #structured error
         if($null -ne $errorRecord.error.details.message)
@@ -568,7 +589,7 @@ function Get-ExoException
             }
             else
             {
-                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithUnknownDetail', '', $message)
+                return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithUnknownDetail', $exceptionType, $message)
             }
         }
         if($null -ne $errorRecord.error.innerError.internalException)
@@ -577,9 +598,9 @@ function Get-ExoException
         }
         if($null -ne $errorRecord.error)
         {
-            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithMissingDetail', '', "$($errorRecord.error)")
+            return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoErrorWithMissingDetail', $exceptionType, "$($errorRecord.error)")
         }
-        return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoUnknownError', '', "$($errorRecord.error)")
+        return new-object ExoHelper.ExoException -ArgumentList @($httpCode, 'ExoUnknownError', $exceptionType, "$($errorRecord.error)")
     }
 }
 function GetRequestMessage
