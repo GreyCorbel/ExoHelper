@@ -192,7 +192,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     else
                     {
-                        Write-Warning "Received non-JSON response with http status $($response.StatusCode): $($response.content.Headers.ContentType.MediaType)"
+                        Write-Warning "Received non-JSON response with http status $($response.StatusCode): $payload"
                         $responseData = $payload
                     }
                 }
