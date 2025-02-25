@@ -252,7 +252,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     }
                     else
                     {
-                        Write-Warning "Received non-JSON response with http status $($response.StatusCode): $($response.content.Headers.ContentType.MediaType)"
+                        Write-Warning "Received non-JSON response with http status $($response.StatusCode): $payload"
                         $responseData = $payload
                     }
                 }
@@ -298,7 +298,7 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     #request failed
                     $ex = $null
                     $exceptionType = $null
-                    $response.Headers.TryGetValues('X-ExceptionType', [ref]$exceptionType)
+                    $response.Headers.TryGetValues('X-ExceptionType', [ref]$exceptionType) | out-null
                     if($response.StatusCode -notin $RetryableStatusCodes `
                         -and $exceptionType -notin @('UnableToWriteToAadException') `
                         -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*' `
@@ -458,11 +458,32 @@ param
 
     process
     {
+        if($authenticationFactory -is [string])
+        {
+            $f = Get-AadAuthenticationFactory -Name $authenticationFactory
+            if($null -eq $f)
+            {
+                throw (new-object ExoHelper.ExoException([System.Net.HttpStatusCode]::BadRequest, 'ExoMissingAuthenticationFactory', 'ExoInitializationError', "Factory with name $authenticationFactory not found"))
+            }
+        }
+        else
+        {
+            $f = $authenticationFactory
+        }
+        if([string]::IsNullOrEmpty($tenantId) )
+        {
+            $tenantId = $f.tenantId
+        }
+        if([string]::IsNullOrEmpty($TenantId))
+        {
+            throw (new-object ExoHelper.ExoException([System.Net.HttpStatusCode]::BadRequest, 'ExoMissingTenantId', 'ExoInitializationError', 'TenantId is not specified and cannot be determined automatically - please specify TenantId parameter'))
+        }
+
         $Connection = [PSCustomObject]@{
             PSTypeName = "ExoHelper.Connection"
-            AuthenticationFactory = $AuthenticationFactory
+            AuthenticationFactory = $f
             ConnectionId = [Guid]::NewGuid().ToString()
-            TenantId = $null
+            TenantId = $tenantId
             AnchorMailbox = $null
             ConnectionUri = $null
             IsIPPS = $IPPS.IsPresent
@@ -471,18 +492,8 @@ param
         }
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
         $Connection.HttpClient.Timeout = $DefaultTimeout
-
         #explicitly authenticate when establishing connection to catch any authentication problems early
         Get-ExoToken -Connection $Connection | Out-Null
-        if([string]::IsNullOrEmpty($TenantId))
-        {
-            $TenantId = $AuthenticationFactory.TenantId
-        }
-        if([string]::IsNullOrEmpty($TenantId))
-        {
-            throw (new-object ExoHelper.ExoException([System.Net.HttpStatusCode]::BadRequest, 'ExoMissingTenantId', 'ExoInitializationError', 'TenantId is not specified and cannot be determined automatically - please specify TenantId parameter'))
-        }
-        $Connection.TenantId = $TenantId
         
         if($IPPS)
         {
