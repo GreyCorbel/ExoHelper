@@ -32,7 +32,7 @@ jobs:
       shell: pwsh
       run: |
         $moduleName = $env:MODULE_NAME
-        Copy-Item -Path "$env:GITHUB_WORKSPACE\LICENSE" -Destination "$env:GITHUB_WORKSPACE\Module\ExoHelper\LICENSE.txt" -Force
+        Copy-Item -Path "$env:GITHUB_WORKSPACE\LICENSE" -Destination "$env:GITHUB_WORKSPACE\Module\$moduleName\LICENSE.txt" -Force
         "Building module"
         &"$env:GITHUB_WORKSPACE\Workflow\BuildModule.ps1" -RootPath "$env:GITHUB_WORKSPACE" -ModuleName $moduleName
 
@@ -76,15 +76,17 @@ jobs:
       env:
         SECRET: ${{ secrets.GC_PSGALLERY_APIKEY }}
       run: |
-        write-host "Publishing from: $env:GITHUB_WORKSPACE\Module\ExoHelper"
+        $moduleName = $env:MODULE_NAME
+
+        write-host "Publishing from: $env:GITHUB_WORKSPACE\Module\$moduleName"
         try
         {
           #setup PSModulePath
           $env:PSModulePath = "$env:PSModulePath;$env:GITHUB_WORKSPACE\Module"
           "PSModulePath: $env:PSModulePath"
 
-          Publish-PSResource -Path "$env:GITHUB_WORKSPACE\Module\ExoHelper" -Repository PSGallery -APIKey "$env:SECRET"
-          #Publish-Module -Path "$env:GITHUB_WORKSPACE\Module\ExoHelper" -NuGetApiKey "$env:SECRET"
+          Publish-PSResource -Path "$env:GITHUB_WORKSPACE\Module\$moduleName" -Repository PSGallery -APIKey "$env:SECRET"
+          #Publish-Module -Path "$env:GITHUB_WORKSPACE\Module\$moduleName" -NuGetApiKey "$env:SECRET"
         }
         catch
         {
