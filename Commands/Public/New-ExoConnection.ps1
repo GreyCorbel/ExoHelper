@@ -127,7 +127,14 @@ param
         }
         else
         {
-            $Connection.AnchorMailbox = "UPN:$AnchorMailbox"
+            if($AnchorMailbox -notmatch ':')
+            {
+                #assume that we have UPN of the mailbox
+                $Connection.AnchorMailbox = "UPN:$AnchorMailbox"
+            }
+            else {
+                $Connection.AnchorMailbox = $AnchorMailbox
+            }
         }
 
         $script:ConnectionContext = $Connection
