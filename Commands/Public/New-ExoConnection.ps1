@@ -91,7 +91,7 @@ param
             PSTypeName = "ExoHelper.Connection"
             AuthenticationFactory = $f
             ConnectionId = [Guid]::NewGuid().ToString()
-            TenantId = $tenantId
+            TenantId = $null
             AnchorMailbox = $null
             ConnectionUri = $null
             IsIPPS = $IPPS.IsPresent
@@ -101,14 +101,21 @@ param
         $Connection.HttpClient.DefaultRequestHeaders.Add("User-Agent", "ExoHelper")
         $Connection.HttpClient.Timeout = $DefaultTimeout
         #explicitly authenticate when establishing connection to catch any authentication problems early
-        Get-ExoToken -Connection $Connection | Out-Null
+        $claims = Get-ExoToken -Connection $Connection | Test-AadToken -PayloadOnly
         
         if($IPPS)
         {
+            $connection.TenantId = $TenantId
             $Connection.ConnectionUri = "https://eur02b.ps.compliance.protection.outlook.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
         }
         else
         {
+            $tenantGuid = $claims.tid
+            if($null -ne $tenantGuid)
+            {
+                $tenantId = $tenantGuid
+            }
+            $connection.TenantId = $TenantId
             $Connection.ConnectionUri = "https://outlook.office365.com/adminapi/beta/$($Connection.TenantId)/InvokeCommand"
         }
 
@@ -121,8 +128,7 @@ param
             }
             else
             {
-                #likely app-only context - use same static anchor mailbox as ExchangeOnlineManagement module uses
-                $Connection.AnchorMailbox = "UPN:DiscoverySearchMailbox{D919BA05-46A6-415f-80AD-7E09334BB852}@$tenantId"
+                $Connection.AnchorMailbox = "APP:SystemMailbox{bb558c35-97f1-4cb9-8ff7-d53741dc928c}@@$tenantId"
             }
         }
         else
