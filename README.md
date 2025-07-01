@@ -2,12 +2,12 @@
 Simple wrapper module that calls into EXO REST API without the need for full heavy-weight ExchangeOnlineManagent module.
 # Motivation
 This module was created to address pain points we observed in ExchangeOnlineManagement module provided by Microsoft:
-- download of heavy part of moduly every time when connecting to EXO - this was not practical for automation tasks that require quick response
-- insuficient handling of retry responses from EXO REST API (at that time; might get better overtime)
+- download of heavy part of module every time when connecting to EXO - this was not practical for automation tasks that require quick response
+- insuficient handling of retry responses from EXO REST API (at that time; might get better meanwhile)
 - insuficient handling of EXO REST API non-standard responses (sometimes returns non-JSON response that's not correctly handled)
 
 Design goal was to provide lightweight module that loads quickly, is focused on talking with EXO REST API, provides better error handling and returns as much as specific error information when error occurs.  
-Additional benefit is abililty to limit fields returned by API via `-PropertiessToLoad` parameter, to limit bandwidth between client and REST API.
+Additional benefit is ability to limit fields returned by API via `-PropertiesToLoad` parameter, to limit bandwidth consumption between client and REST API.
 
 Module basically ofers single command `Invoke-ExoCommand` that takes 2 parameters:
 - Command name
