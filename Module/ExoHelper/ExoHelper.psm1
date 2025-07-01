@@ -306,7 +306,16 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         )
                     {
                         $shouldContinue = $false
-                        $ex = $responseData | Get-ExoException -httpCode $response.StatusCode -exceptionType $exceptionType
+                        if($null -ne $responseData)
+                        {
+                            #we have structured error
+                            $ex = $responseData | Get-ExoException -httpCode $response.StatusCode -exceptionType $exceptionType
+                        }
+                        else
+                        {
+                            #we have plain text error
+                            $ex = new-object ExoHelper.ExoException($response.StatusCode, 'ExoErrorWithPlainText', $exceptionType, $payload)
+                        }
                     }
                     else
                     {
