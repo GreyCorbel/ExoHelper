@@ -12,7 +12,7 @@
 RootModule = 'ExoHelper.psm1'
 
 # Version number of this module.
-ModuleVersion = '3.0.6'
+ModuleVersion = '3.0.7'
 
 # Supported PSEditions
 CompatiblePSEditions = @('Desktop', 'Core')
@@ -51,8 +51,7 @@ PowerShellVersion = '5.1'
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @(@{ModuleName="AadAuthenticationFactory"; ModuleVersion="3.1.1"; GUID='9d860f96-4bde-41d3-890b-1a3f51c34d68'})
-
+RequiredModules = @('AadAuthenticationFactory')
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()
 
