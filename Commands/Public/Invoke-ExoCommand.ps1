@@ -317,20 +317,23 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
             }
             finally
             {
-                if($ShowRateLimits -and $null -ne $response.Headers)
+                if($null -ne $response)
                 {
-                    $val = $null
-                    if($response.Headers.TryGetValues('Rate-Limit-Remaining', [ref]$val)) 
+                    if($ShowRateLimits -and $null -ne $response.Headers)
                     {
-                        $rateLimitRemaining = $val
-                        if($response.Headers.TryGetValues('Rate-Limit-Reset', [ref]$val))
+                        $val = $null
+                        if($response.Headers.TryGetValues('Rate-Limit-Remaining', [ref]$val)) 
                         {
-                            $rateLimitReset = $val
-                            Write-Verbose "Rate limit remaining: $rateLimitRemaining`tRate limit reset: $rateLimitReset"
+                            $rateLimitRemaining = $val
+                            if($response.Headers.TryGetValues('Rate-Limit-Reset', [ref]$val))
+                            {
+                                $rateLimitReset = $val
+                                Write-Verbose "Rate limit remaining: $rateLimitRemaining`tRate limit reset: $rateLimitReset"
+                            }
                         }
                     }
+                    $response.Dispose()
                 }
-                $response.Dispose()
             }
         }while($null -ne $pageUri -and ($resultsRetrieved -lt $ResultSize) -and $shouldContinue)
     }
