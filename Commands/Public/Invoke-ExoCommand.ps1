@@ -242,11 +242,12 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                     {
                         $response.Headers.TryGetValues('X-ExceptionType', [ref]$exceptionType) | out-null
                     }
-                    if($response.StatusCode -notin $RetryableStatusCodes `
+                    <# if($response.StatusCode -notin $RetryableStatusCodes `
                         -and $exceptionType -notin @('UnableToWriteToAadException') `
                         -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*' `
                         -and $responseData -notlike '*issue may be transient*' `
-                        )
+                        ) #>
+                    if($response.StatusCode -notin $RetryableStatusCodes -and $responseData -notlike 'You have reached the maximum number of concurrent requests per tenant. Please wait and try again*' )
                     {
                         $shouldContinue = $false
                         if($null -ne $responseData)
@@ -266,7 +267,14 @@ This command creates connection for IPPS REST API, retrieves list of sensitivity
                         if($retries -ge $MaxRetries)
                         {
                             $shouldContinue = $false
-                            $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', $exceptionType, 'Max retry count for request exceeded')
+                            if([string]::IsNullOrEmpty($payload))
+                            {
+                                $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', $exceptionType, 'Max retry count for request exceeded')
+                            }
+                            else
+                            {
+                                $ex = New-Object ExoHelper.ExoException($response.StatusCode, 'ExoTooManyRequests', $exceptionType, $payload)
+                            }
                         }
                     }
                     if($null -ne $ex)
